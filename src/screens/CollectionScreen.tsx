@@ -1,11 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, FlatList, TouchableOpacity, Image, RefreshControl, ActivityIndicator, Modal, TextInput, Alert, ScrollView, Platform, StyleSheet, Text } from 'react-native';
+import { View, FlatList, TouchableOpacity, Image, RefreshControl, ActivityIndicator, Modal, TextInput, Alert, ScrollView, Platform, StyleSheet, Text, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { collectionApi, musicApi } from '../api/endpoints';
 import { CollectionItem, MediaType, MusicSearchResult } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
+
+// Try to import BarCodeScanner, but make it optional
+let BarCodeScanner: any = null;
+try {
+  const barcodeModule = require('expo-barcode-scanner');
+  BarCodeScanner = barcodeModule.BarCodeScanner;
+} catch (e) {
+  console.log('BarCodeScanner not available - feature will be disabled');
+}
 
 const MEDIA_TYPES: { key: MediaType; label: string; icon: string }[] = [
     { key: 'vinyl', label: 'Vinyl', icon: 'record-vinyl' },
@@ -14,9 +23,21 @@ const MEDIA_TYPES: { key: MediaType; label: string; icon: string }[] = [
     { key: 'digital', label: 'Digital', icon: 'music' },
 ];
 
-export default function CollectionScreen({ navigation }: any) {
+const CONDITION_OPTIONS = [
+    { key: 'mint', label: 'Mint', icon: 'star' },
+    { key: 'near-mint', label: 'Near Mint', icon: 'star-half' },
+    { key: 'good', label: 'Good', icon: 'thumbs-up' },
+    { key: 'fair', label: 'Fair', icon: 'minus' },
+    { key: 'poor', label: 'Poor', icon: 'thumbs-down' },
+];
+
+export default function CollectionScreen({ navigation, route }: any) {
     const insets = useSafeAreaInsets();
     const { user } = useAuthStore();
+    const { userId, username } = route?.params ?? {};
+    const viewingUserId = userId ?? user?.id;
+    const isMyCollection = viewingUserId === user?.id;
+    
     const [items, setItems] = useState<CollectionItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -28,14 +49,21 @@ export default function CollectionScreen({ navigation }: any) {
     const [selectedMediaType, setSelectedMediaType] = useState<MediaType>('vinyl');
     const [notes, setNotes] = useState('');
     const [condition, setCondition] = useState('');
+    const [releaseYear, setReleaseYear] = useState('');
+    const [purchaseDate, setPurchaseDate] = useState('');
     const [editModalVisible, setEditModalVisible] = useState(false);
     const [editingItem, setEditingItem] = useState<CollectionItem | null>(null);
+    
+    // Barcode scanner state
+    const [scannerVisible, setScannerVisible] = useState(false);
+    const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+    const [scanned, setScanned] = useState(false);
 
     const load = useCallback(async (isRefresh = false) => {
         if (isRefresh) setRefreshing(true);
         try {
             const res = await collectionApi.getCollection(
-                user?.id,
+                viewingUserId,
                 filterType === 'all' ? undefined : filterType
             );
             setItems(res.data.items);
@@ -44,7 +72,7 @@ export default function CollectionScreen({ navigation }: any) {
         }
         setLoading(false);
         setRefreshing(false);
-    }, [user?.id, filterType]);
+    }, [viewingUserId, filterType]);
 
     useEffect(() => {
         load();
@@ -96,6 +124,10 @@ export default function CollectionScreen({ navigation }: any) {
     const handleEditItem = (item: CollectionItem) => {
         setEditingItem(item);
         setSelectedMediaType(item.media_type);
+        setCondition(item.condition || '');
+        setNotes(item.notes || '');
+        setReleaseYear(item.release_year?.toString() || '');
+        setPurchaseDate(item.purchase_date || '');
         setEditModalVisible(true);
     };
 
@@ -104,8 +136,12 @@ export default function CollectionScreen({ navigation }: any) {
         try {
             await collectionApi.updateItem(editingItem.id, {
                 media_type: selectedMediaType,
+                condition: condition.trim(),
+                notes: notes.trim(),
+                release_year: releaseYear ? parseInt(releaseYear) : undefined,
+                purchase_date: purchaseDate.trim() || undefined,
             });
-            Alert.alert('Updated!', 'Media type updated successfully');
+            Alert.alert('Updated!', 'Collection item updated successfully');
             setEditModalVisible(false);
             setEditingItem(null);
             load();
@@ -132,6 +168,65 @@ export default function CollectionScreen({ navigation }: any) {
         ]);
     };
 
+    const requestCameraPermission = async () => {
+        if (!BarCodeScanner) return false;
+        const { status } = await BarCodeScanner.requestPermissionsAsync();
+        setHasPermission(status === 'granted');
+        return status === 'granted';
+    };
+
+    const handleOpenScanner = async () => {
+        if (!BarCodeScanner) {
+            Alert.alert(
+                'Feature Not Available',
+                'Barcode scanning requires a development build. Run "npx expo run:android" or "npx expo run:ios" to enable this feature.',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+        const granted = await requestCameraPermission();
+        if (granted) {
+            setScannerVisible(true);
+            setScanned(false);
+        } else {
+            Alert.alert('Permission Required', 'Camera permission is needed to scan barcodes');
+        }
+    };
+
+    const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
+        if (scanned) return;
+        setScanned(true);
+        setScannerVisible(false);
+        
+        // Show loading
+        Alert.alert('Scanning...', 'Looking up album information');
+        
+        try {
+            const res = await musicApi.searchByBarcode(data);
+            const albumData = res.data;
+            
+            // Auto-fill and add to collection
+            await collectionApi.addItem({
+                media_type: selectedMediaType,
+                album_title: albumData.album,
+                artist: albumData.artist,
+                album_art_url: albumData.album_art_url,
+                notes: `Scanned barcode: ${data}`,
+                condition: '',
+            });
+            
+            Alert.alert('Added!', `${albumData.album} by ${albumData.artist} added to your collection`);
+            load();
+            
+        } catch (err: any) {
+            Alert.alert(
+                'Not Found',
+                'Could not find album information for this barcode. Try manual search instead.',
+                [{ text: 'OK' }]
+            );
+        }
+    };
+
     const filteredItems = filterType === 'all' ? items : items.filter(i => i.media_type === filterType);
 
     return (
@@ -146,20 +241,32 @@ export default function CollectionScreen({ navigation }: any) {
                 }}
             >
                 <View style={{ paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 34, letterSpacing: -0.5 }}>
-                        Collection
-                    </Text>
-                    <TouchableOpacity
-                        onPress={() => setAddModalVisible(true)}
-                        style={{
-                            backgroundColor: Colors.primary,
-                            borderRadius: 20,
-                            paddingHorizontal: 16,
-                            paddingVertical: 8,
-                        }}
-                    >
-                        <Ionicons name="add" size={20} color="white" />
-                    </TouchableOpacity>
+                    {!isMyCollection && (
+                        <TouchableOpacity
+                            onPress={() => navigation.goBack()}
+                            style={{ padding: 4, marginRight: 12 }}
+                        >
+                            <Ionicons name="arrow-back" size={24} color="white" />
+                        </TouchableOpacity>
+                    )}
+                    <View style={{ flex: 1 }}>
+                        <Text style={{ color: 'white', fontWeight: '700', fontSize: isMyCollection ? 34 : 24, letterSpacing: -0.5 }}>
+                            {isMyCollection ? 'Collection' : `${username}'s Collection`}
+                        </Text>
+                    </View>
+                    {isMyCollection && (
+                        <TouchableOpacity
+                            onPress={() => setAddModalVisible(true)}
+                            style={{
+                                backgroundColor: Colors.primary,
+                                borderRadius: 20,
+                                paddingHorizontal: 16,
+                                paddingVertical: 8,
+                            }}
+                        >
+                            <Ionicons name="add" size={20} color="white" />
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {/* Filter tabs */}
@@ -206,8 +313,9 @@ export default function CollectionScreen({ navigation }: any) {
                 keyExtractor={(item) => String(item.id)}
                 renderItem={({ item }) => (
                     <TouchableOpacity
-                        onPress={() => handleEditItem(item)}
-                        onLongPress={() => handleRemove(item)}
+                        onPress={isMyCollection ? () => handleEditItem(item) : undefined}
+                        onLongPress={isMyCollection ? () => handleRemove(item) : undefined}
+                        activeOpacity={isMyCollection ? 0.2 : 1}
                         style={{
                             flex: 1,
                             margin: 6,
@@ -240,6 +348,11 @@ export default function CollectionScreen({ navigation }: any) {
                                     <Text style={{ color: '#6b7280', fontSize: 10 }}>{item.condition}</Text>
                                 )}
                             </View>
+                            {item.purchase_date && (
+                                <Text style={{ color: '#6b7280', fontSize: 10, marginTop: 4 }}>
+                                    <Ionicons name="calendar-outline" size={10} color="#6b7280" /> {new Date(item.purchase_date).toLocaleDateString()}
+                                </Text>
+                            )}
                             {item.notes && (
                                 <Text style={{ color: '#9ca3af', fontSize: 10, marginTop: 4, fontStyle: 'italic' }} numberOfLines={2}>
                                     {item.notes}
@@ -266,11 +379,13 @@ export default function CollectionScreen({ navigation }: any) {
                         <View style={{ paddingVertical: 60, alignItems: 'center', paddingHorizontal: 40 }}>
                             <FontAwesome5 name="record-vinyl" size={64} color="#374151" />
                             <Text style={{ color: '#6b7280', fontSize: 16, marginTop: 16, textAlign: 'center' }}>
-                                Your collection is empty
+                                {isMyCollection ? 'Your collection is empty' : 'This collection is empty'}
                             </Text>
-                            <Text style={{ color: '#4b5563', fontSize: 13, marginTop: 8, textAlign: 'center' }}>
-                                Tap + to add your first album
-                            </Text>
+                            {isMyCollection && (
+                                <Text style={{ color: '#4b5563', fontSize: 13, marginTop: 8, textAlign: 'center' }}>
+                                    Tap + to add your first album
+                                </Text>
+                            )}
                         </View>
                     )
                 }
@@ -336,6 +451,19 @@ export default function CollectionScreen({ navigation }: any) {
                                 onSubmitEditing={handleSearch}
                                 keyboardAppearance="dark"
                             />
+                            <TouchableOpacity
+                                onPress={handleOpenScanner}
+                                style={{
+                                    backgroundColor: 'rgba(147,51,234,0.15)',
+                                    borderRadius: 14,
+                                    paddingHorizontal: 18,
+                                    justifyContent: 'center',
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(147,51,234,0.3)',
+                                }}
+                            >
+                                <Ionicons name="barcode-outline" size={20} color="#a855f7" />
+                            </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={handleSearch}
                                 disabled={searching}
@@ -444,63 +572,276 @@ export default function CollectionScreen({ navigation }: any) {
 
             {/* Edit Item Modal */}
             <Modal visible={editModalVisible} animationType="slide" presentationStyle="pageSheet">
-                <View style={{ flex: 1, backgroundColor: '#0A0A0F', paddingTop: Platform.OS === 'ios' ? 40 : 20, paddingHorizontal: 20 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-                        <TouchableOpacity onPress={() => setEditModalVisible(false)} style={{ padding: 4 }}>
-                            <Text style={{ color: '#6b7280', fontSize: 16 }}>Cancel</Text>
-                        </TouchableOpacity>
-                        <Text style={{ color: 'white', fontWeight: '700', fontSize: 18 }}>Edit Item</Text>
-                        <TouchableOpacity onPress={handleUpdateItem} style={{ padding: 4 }}>
-                            <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 16 }}>Save</Text>
+                <KeyboardAvoidingView 
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={{ flex: 1 }}
+                >
+                    <View style={{ flex: 1, backgroundColor: '#0A0A0F', paddingTop: Platform.OS === 'ios' ? 40 : 20 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 }}>
+                            <TouchableOpacity onPress={() => setEditModalVisible(false)} style={{ padding: 4 }}>
+                                <Text style={{ color: '#6b7280', fontSize: 16 }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <Text style={{ color: 'white', fontWeight: '700', fontSize: 18 }}>Edit Item</Text>
+                            <TouchableOpacity onPress={handleUpdateItem} style={{ padding: 4 }}>
+                                <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 16 }}>Save</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+                        {editingItem && (
+                            <>
+                                {/* Album Info Header */}
+                                <View style={{ alignItems: 'center', marginBottom: 32 }}>
+                                    {editingItem.album_art_url ? (
+                                        <Image source={{ uri: editingItem.album_art_url }} style={{ width: 140, height: 140, borderRadius: 12 }} />
+                                    ) : (
+                                        <View style={{ width: 140, height: 140, borderRadius: 12, backgroundColor: '#1f2937', justifyContent: 'center', alignItems: 'center' }}>
+                                            <FontAwesome5 name="music" size={40} color="#4b5563" />
+                                        </View>
+                                    )}
+                                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 18, marginTop: 12, textAlign: 'center' }}>
+                                        {editingItem.album_title}
+                                    </Text>
+                                    <Text style={{ color: Colors.primary, fontSize: 14, marginTop: 4 }}>
+                                        {editingItem.artist}
+                                    </Text>
+                                </View>
+
+                                {/* Media Type */}
+                                <View style={{ marginBottom: 24 }}>
+                                    <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
+                                        Media Type
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                        {MEDIA_TYPES.map(type => (
+                                            <TouchableOpacity
+                                                key={type.key}
+                                                onPress={() => setSelectedMediaType(type.key)}
+                                                style={{
+                                                    flex: 1,
+                                                    paddingVertical: 14,
+                                                    borderRadius: 10,
+                                                    backgroundColor: selectedMediaType === type.key ? Colors.primary : 'rgba(255,255,255,0.05)',
+                                                    borderWidth: 1,
+                                                    borderColor: selectedMediaType === type.key ? Colors.primary : 'rgba(255,255,255,0.08)',
+                                                    alignItems: 'center',
+                                                }}
+                                            >
+                                                <FontAwesome5 name={type.icon} size={20} color={selectedMediaType === type.key ? 'white' : '#9ca3af'} />
+                                                <Text style={{ color: selectedMediaType === type.key ? 'white' : '#9ca3af', fontSize: 11, fontWeight: '600', marginTop: 6 }}>
+                                                    {type.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </View>
+
+                                {/* Condition */}
+                                <View style={{ marginBottom: 24 }}>
+                                    <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
+                                        Condition
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                                        {CONDITION_OPTIONS.map(cond => (
+                                            <TouchableOpacity
+                                                key={cond.key}
+                                                onPress={() => setCondition(cond.key)}
+                                                style={{
+                                                    paddingHorizontal: 14,
+                                                    paddingVertical: 10,
+                                                    borderRadius: 8,
+                                                    backgroundColor: condition === cond.key ? Colors.primary : 'rgba(255,255,255,0.05)',
+                                                    borderWidth: 1,
+                                                    borderColor: condition === cond.key ? Colors.primary : 'rgba(255,255,255,0.08)',
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    gap: 6,
+                                                }}
+                                            >
+                                                <FontAwesome5 name={cond.icon} size={12} color={condition === cond.key ? 'white' : '#9ca3af'} />
+                                                <Text style={{ color: condition === cond.key ? 'white' : '#9ca3af', fontSize: 13, fontWeight: '600' }}>
+                                                    {cond.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </View>
+
+                                {/* Release Year */}
+                                <View style={{ marginBottom: 24 }}>
+                                    <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
+                                        Release Year (Optional)
+                                    </Text>
+                                    <TextInput
+                                        value={releaseYear}
+                                        onChangeText={setReleaseYear}
+                                        placeholder="e.g., 1985"
+                                        placeholderTextColor="#4b5563"
+                                        keyboardType="numeric"
+                                        maxLength={4}
+                                        style={{
+                                            backgroundColor: 'rgba(255,255,255,0.05)',
+                                            borderWidth: 1,
+                                            borderColor: 'rgba(255,255,255,0.08)',
+                                            borderRadius: 10,
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 14,
+                                            color: 'white',
+                                            fontSize: 15,
+                                        }}
+                                    />
+                                </View>
+
+                                {/* Purchase Date */}
+                                <View style={{ marginBottom: 24 }}>
+                                    <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
+                                        Purchase Date (Optional)
+                                    </Text>
+                                    <TextInput
+                                        value={purchaseDate}
+                                        onChangeText={setPurchaseDate}
+                                        placeholder="YYYY-MM-DD (e.g., 2024-03-15)"
+                                        placeholderTextColor="#4b5563"
+                                        maxLength={10}
+                                        style={{
+                                            backgroundColor: 'rgba(255,255,255,0.05)',
+                                            borderWidth: 1,
+                                            borderColor: 'rgba(255,255,255,0.08)',
+                                            borderRadius: 10,
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 14,
+                                            color: 'white',
+                                            fontSize: 15,
+                                        }}
+                                    />
+                                    <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 6 }}>
+                                        Format: YYYY-MM-DD
+                                    </Text>
+                                </View>
+
+                                {/* Notes */}
+                                <View style={{ marginBottom: 24 }}>
+                                    <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>
+                                        Personal Notes (Optional)
+                                    </Text>
+                                    <TextInput
+                                        value={notes}
+                                        onChangeText={setNotes}
+                                        placeholder="Add notes about this item..."
+                                        placeholderTextColor="#4b5563"
+                                        multiline
+                                        numberOfLines={4}
+                                        textAlignVertical="top"
+                                        maxLength={500}
+                                        style={{
+                                            backgroundColor: 'rgba(255,255,255,0.05)',
+                                            borderWidth: 1,
+                                            borderColor: 'rgba(255,255,255,0.08)',
+                                            borderRadius: 10,
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 14,
+                                            color: 'white',
+                                            fontSize: 15,
+                                            minHeight: 100,
+                                        }}
+                                    />
+                                    <Text style={{ color: '#4b5563', fontSize: 11, marginTop: 6, textAlign: 'right' }}>
+                                        {notes.length}/500
+                                    </Text>
+                                </View>
+                            </>
+                        )}
+                    </ScrollView>
+                </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            {/* Barcode Scanner Modal */}
+            <Modal visible={scannerVisible} animationType="slide" presentationStyle="fullScreen">
+                <View style={{ flex: 1, backgroundColor: '#000' }}>
+                    <View style={{ paddingTop: insets.top, paddingHorizontal: 20, paddingVertical: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ color: 'white', fontWeight: '700', fontSize: 20 }}>Scan Barcode</Text>
+                        <TouchableOpacity
+                            onPress={() => setScannerVisible(false)}
+                            style={{ padding: 8, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12 }}
+                        >
+                            <Ionicons name="close" size={24} color="white" />
                         </TouchableOpacity>
                     </View>
 
-                    {editingItem && (
-                        <>
-                            <View style={{ alignItems: 'center', marginBottom: 28 }}>
-                                {editingItem.album_art_url ? (
-                                    <Image source={{ uri: editingItem.album_art_url }} style={{ width: 160, height: 160, borderRadius: 12 }} />
-                                ) : (
-                                    <View style={{ width: 160, height: 160, borderRadius: 12, backgroundColor: '#1f2937', justifyContent: 'center', alignItems: 'center' }}>
-                                        <FontAwesome5 name="music" size={48} color="#4b5563" />
-                                    </View>
-                                )}
-                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 18, marginTop: 12, textAlign: 'center' }}>
-                                    {editingItem.album_title}
-                                </Text>
-                                <Text style={{ color: Colors.primary, fontSize: 14, marginTop: 4 }}>
-                                    {editingItem.artist}
+                    {hasPermission === null ? (
+                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                            <ActivityIndicator size="large" color={Colors.primary} />
+                            <Text style={{ color: '#9ca3af', marginTop: 16 }}>Requesting camera permission...</Text>
+                        </View>
+                    ) : hasPermission === false ? (
+                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 }}>
+                            <Ionicons name="camera-off" size={64} color="#4b5563" />
+                            <Text style={{ color: 'white', fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
+                                Camera Permission Required
+                            </Text>
+                            <Text style={{ color: '#9ca3af', fontSize: 14, marginTop: 8, textAlign: 'center' }}>
+                                We need camera access to scan barcodes. Please enable it in your device settings.
+                            </Text>
+                            <TouchableOpacity
+                                onPress={requestCameraPermission}
+                                style={{
+                                    marginTop: 24,
+                                    backgroundColor: Colors.primary,
+                                    paddingHorizontal: 24,
+                                    paddingVertical: 12,
+                                    borderRadius: 12,
+                                }}
+                            >
+                                <Text style={{ color: 'white', fontWeight: '600' }}>Request Permission</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : BarCodeScanner ? (
+                        <View style={{ flex: 1 }}>
+                            <BarCodeScanner
+                                onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}
+                                style={StyleSheet.absoluteFillObject}
+                                barCodeTypes={[
+                                    'ean13',
+                                    'ean8',
+                                    'upc_a',
+                                    'upc_e',
+                                ]}
+                            />
+                            {/* Scanning overlay */}
+                            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                                <View style={{
+                                    width: 280,
+                                    height: 280,
+                                    borderWidth: 2,
+                                    borderColor: Colors.primary,
+                                    borderRadius: 20,
+                                    backgroundColor: 'transparent',
+                                }} />
+                                <Text style={{
+                                    color: 'white',
+                                    fontSize: 16,
+                                    fontWeight: '600',
+                                    marginTop: 32,
+                                    backgroundColor: 'rgba(0,0,0,0.7)',
+                                    paddingHorizontal: 20,
+                                    paddingVertical: 12,
+                                    borderRadius: 12,
+                                }}>
+                                    Align barcode within the frame
                                 </Text>
                             </View>
-
-                            <View>
-                                <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
-                                    Change Media Type
-                                </Text>
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                                    {MEDIA_TYPES.map(type => (
-                                        <TouchableOpacity
-                                            key={type.key}
-                                            onPress={() => setSelectedMediaType(type.key)}
-                                            style={{
-                                                flex: 1,
-                                                paddingVertical: 16,
-                                                borderRadius: 12,
-                                                backgroundColor: selectedMediaType === type.key ? Colors.primary : 'rgba(255,255,255,0.05)',
-                                                borderWidth: 1,
-                                                borderColor: selectedMediaType === type.key ? Colors.primary : 'rgba(255,255,255,0.08)',
-                                                alignItems: 'center',
-                                            }}
-                                        >
-                                            <FontAwesome5 name={type.icon} size={24} color={selectedMediaType === type.key ? 'white' : '#9ca3af'} />
-                                            <Text style={{ color: selectedMediaType === type.key ? 'white' : '#9ca3af', fontSize: 12, fontWeight: '600', marginTop: 8 }}>
-                                                {type.label}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                            </View>
-                        </>
+                        </View>
+                    ) : (
+                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 }}>
+                            <Ionicons name="construct" size={64} color="#4b5563" />
+                            <Text style={{ color: 'white', fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
+                                Development Build Required
+                            </Text>
+                            <Text style={{ color: '#9ca3af', fontSize: 14, marginTop: 8, textAlign: 'center' }}>
+                                Run "npx expo run:android" or "npx expo run:ios" to enable barcode scanning.
+                            </Text>
+                        </View>
                     )}
                 </View>
             </Modal>

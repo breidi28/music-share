@@ -6,9 +6,10 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import { ResponseType } from 'expo-auth-session';
 import * as ImagePicker from 'expo-image-picker';
 import { User, Post, PostType } from '../types';
-import { usersApi, postsApi, spotifyApi, youtubeApi, appleMusicApi } from '../api/endpoints';
+import { usersApi, postsApi, spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi } from '../api/endpoints';
 import { API_BASE_URL } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
@@ -34,22 +35,20 @@ WebBrowser.maybeCompleteAuthSession();
 
 // Music service OAuth configs
 const SPOTIFY_CLIENT_ID = 'c2276ecc29b14734a7dc8c857a72bd80';
-const YOUTUBE_CLIENT_ID = '810258213827-0evata0ebfoj122j2hou1etjvcf5v84j.apps.googleusercontent.com';
+// Web client ID for Google OAuth - this works with expo-auth-session Google provider
+const GOOGLE_WEB_CLIENT_ID = '810258213827-0evata0ebfoj122j2hou1etjvcf5v84j.apps.googleusercontent.com';
+
 const spotifyDiscovery = {
     authorizationEndpoint: 'https://accounts.spotify.com/authorize',
     tokenEndpoint: 'https://accounts.spotify.com/api/token',
 };
-const youtubeDiscovery = {
-    authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-    tokenEndpoint: 'https://oauth2.googleapis.com/token',
-};
 
-// Compute once at module level so it's stable and loggable
-const REDIRECT_URI = AuthSession.makeRedirectUri({
+// For Spotify, use the app scheme
+const SPOTIFY_REDIRECT_URI = AuthSession.makeRedirectUri({
     scheme: 'musicshare',
-    projectNameForProxy: '@breidi282/music-share'
 });
-console.log('[Music Services OAuth] Redirect URI:', REDIRECT_URI);
+
+console.log('[Music Services OAuth] Spotify Redirect URI:', SPOTIFY_REDIRECT_URI);
 
 export default function ProfileScreen({ navigation, route }: any) {
     const { userId } = route.params ?? {};
@@ -68,8 +67,11 @@ export default function ProfileScreen({ navigation, route }: any) {
     const [sharingLive, setSharingLive] = useState(false);
     
     // Music service selection
-    const [selectedMusicService, setSelectedMusicService] = useState<'spotify' | 'youtube' | 'apple'>('spotify');
+    const [selectedMusicService, setSelectedMusicService] = useState<'spotify' | 'youtube' | 'apple' | 'tidal' | 'qobuz'>('spotify');
     const [spotifyTab, setSpotifyTab] = useState<'recent' | 'artists' | 'playlists'>('recent');
+    const [youtubeTab, setYoutubeTab] = useState<'history' | 'liked' | 'playlists'>('history');
+    const [tidalTab, setTidalTab] = useState<'playlists' | 'favorites'>('playlists');
+    const [qobuzTab, setQobuzTab] = useState<'playlists' | 'favorites'>('playlists');
     
     // Spotify data
     const [spotifyRecent, setSpotifyRecent] = useState<any[]>([]);
@@ -78,6 +80,8 @@ export default function ProfileScreen({ navigation, route }: any) {
     const [spotifyLoading, setSpotifyLoading] = useState(false);
     
     // YouTube Music data
+    const [youtubeHistory, setYoutubeHistory] = useState<any[]>([]);
+    const [youtubeLiked, setYoutubeLiked] = useState<any[]>([]);
     const [youtubePlaylists, setYoutubePlaylists] = useState<any[]>([]);
     const [youtubeLoading, setYoutubeLoading] = useState(false);
     
@@ -85,10 +89,25 @@ export default function ProfileScreen({ navigation, route }: any) {
     const [applePlaylists, setApplePlaylists] = useState<any[]>([]);
     const [appleLoading, setAppleLoading] = useState(false);
     
+    // Tidal data
+    const [tidalPlaylists, setTidalPlaylists] = useState<any[]>([]);
+    const [tidalFavorites, setTidalFavorites] = useState<any[]>([]);
+    const [tidalLoading, setTidalLoading] = useState(false);
+    
+    // Qobuz data
+    const [qobuzPlaylists, setQobuzPlaylists] = useState<any[]>([]);
+    const [qobuzFavorites, setQobuzFavorites] = useState<any[]>([]);
+    const [qobuzLoading, setQobuzLoading] = useState(false);
+    const [qobuzLoginVisible, setQobuzLoginVisible] = useState(false);
+    const [qobuzCredentials, setQobuzCredentials] = useState({ username: '', password: '' });
+    
     const [tasteMatch, setTasteMatch] = useState<number | null>(null);
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({ display_name: '', bio: '', favorite_genres: '', avatar_url: '' });
     const insets = useSafeAreaInsets();
+
+    // Google OAuth discovery for YouTube
+    const googleDiscovery = AuthSession.useAutoDiscovery('https://accounts.google.com');
 
     // Auth Sessions for Music Services
     const [spotifyRequest, spotifyResponse, spotifyPromptAsync] = AuthSession.useAuthRequest(
@@ -103,28 +122,32 @@ export default function ProfileScreen({ navigation, route }: any) {
                 'playlist-read-collaborative',
             ],
             usePKCE: false,
-            redirectUri: REDIRECT_URI,
+            redirectUri: SPOTIFY_REDIRECT_URI,
         },
         spotifyDiscovery
     );
 
+    // YouTube OAuth using implicit grant flow (returns access_token directly)
+    // Using the Expo auth proxy URL which is already registered in Google Cloud Console
+    const YOUTUBE_REDIRECT_URI = 'https://auth.expo.io/@breidi282/music-share';
     const [youtubeRequest, youtubeResponse, youtubePromptAsync] = AuthSession.useAuthRequest(
         {
-            clientId: YOUTUBE_CLIENT_ID || 'placeholder',
-            scopes: [
-                'https://www.googleapis.com/auth/youtube.readonly',
-            ],
-            usePKCE: false,
-            redirectUri: REDIRECT_URI,
+            clientId: GOOGLE_WEB_CLIENT_ID,
+            responseType: ResponseType.Code,
+            scopes: ['https://www.googleapis.com/auth/youtube.readonly'],
+            redirectUri: YOUTUBE_REDIRECT_URI,
+            usePKCE: false, // Disable PKCE for compatibility
         },
-        youtubeDiscovery
+        googleDiscovery
     );
+
+    console.log('[YouTube OAuth] Using redirect URI:', YOUTUBE_REDIRECT_URI);
 
     // Handle Spotify OAuth response
     useEffect(() => {
         if (spotifyResponse?.type === 'success') {
             const { code } = spotifyResponse.params;
-            spotifyApi.callback(code, REDIRECT_URI)
+            spotifyApi.callback(code, SPOTIFY_REDIRECT_URI)
                 .then(res => {
                     setProfile(res.data.user);
                     Alert.alert('Success', 'Spotify linked successfully!');
@@ -133,16 +156,34 @@ export default function ProfileScreen({ navigation, route }: any) {
         }
     }, [spotifyResponse]);
 
-    // Handle YouTube OAuth response
+    // Handle YouTube OAuth response - implicit grant returns access_token in params
     useEffect(() => {
         if (youtubeResponse?.type === 'success') {
-            const { code } = youtubeResponse.params;
-            youtubeApi.callback(code, REDIRECT_URI)
-                .then(res => {
-                    setProfile(res.data.user);
-                    Alert.alert('Success', 'YouTube Music linked successfully!');
-                })
-                .catch(e => Alert.alert('Error', 'Failed to link YouTube Music'));
+            // Authorization code flow returns code in params
+            const code = youtubeResponse.params?.code;
+            if (code) {
+                // Send code to backend to exchange for tokens
+                youtubeApi.callback(code, YOUTUBE_REDIRECT_URI)
+                    .then(res => {
+                        setProfile(res.data.user);
+                        Alert.alert('Success', 'YouTube Music linked successfully!');
+                    })
+                    .catch(e => {
+                        console.error('[YouTube OAuth] Backend error:', e);
+                        Alert.alert('Error', 'Failed to link YouTube Music');
+                    });
+            } else {
+                console.error('[YouTube OAuth] No authorization code in response params');
+                Alert.alert('Error', 'No authorization code received');
+            }
+        } else if (youtubeResponse?.type === 'error') {
+            console.error('[YouTube OAuth] Error:', youtubeResponse.error, youtubeResponse.params);
+            Alert.alert('Authentication Error', youtubeResponse.error?.message || 'Failed to authenticate with YouTube');
+        } else if (youtubeResponse?.type === 'dismiss') {
+            console.log('[YouTube OAuth] User dismissed');
+        }
+        if (youtubeResponse) {
+            console.log('[YouTube OAuth] Full response:', JSON.stringify(youtubeResponse, null, 2));
         }
     }, [youtubeResponse]);
 
@@ -182,17 +223,28 @@ export default function ProfileScreen({ navigation, route }: any) {
     useEffect(() => {
         if (!profile?.has_youtube_linked) return;
         setYoutubeLoading(true);
-        youtubeApi.getPlaylists(profile.id)
-            .then(res => {
-                console.log('[YouTube] Playlists:', res.data?.length || 0, res.data);
-                setYoutubePlaylists(Array.isArray(res.data) ? res.data : []);
+        Promise.all([
+            youtubeApi.getHistory(profile.id),
+            youtubeApi.getLiked(profile.id),
+            youtubeApi.getPlaylists(profile.id),
+        ])
+            .then(([history, liked, playlists]) => {
+                console.log('[YouTube Music] History:', history.data?.length || 0);
+                console.log('[YouTube Music] Liked:', liked.data?.length || 0);
+                console.log('[YouTube Music] Playlists:', playlists.data?.length || 0);
+                
+                setYoutubeHistory(Array.isArray(history.data) ? history.data : []);
+                setYoutubeLiked(Array.isArray(liked.data) ? liked.data : []);
+                setYoutubePlaylists(Array.isArray(playlists.data) ? playlists.data : []);
             })
             .catch(err => {
-                console.error('[YouTube] Error fetching data:', err);
-                console.error('[YouTube] Error details:', err.response?.data);
+                console.error('[YouTube Music] Error fetching data:', err);
+                console.error('[YouTube Music] Error details:', err.response?.data);
                 if (err.response?.data?.error) {
-                    Alert.alert('YouTube Error', err.response.data.error);
+                    Alert.alert('YouTube Music Error', err.response.data.error);
                 }
+                setYoutubeHistory([]);
+                setYoutubeLiked([]);
                 setYoutubePlaylists([]);
             })
             .finally(() => setYoutubeLoading(false));
@@ -259,6 +311,38 @@ export default function ProfileScreen({ navigation, route }: any) {
                         setProfile(res.data.user);
                         setApplePlaylists([]);
                     } catch { Alert.alert('Error', 'Could not disconnect Apple Music'); }
+                }
+            }
+        ]);
+    };
+
+    const handleDisconnectTidal = () => {
+        Alert.alert('Disconnect Tidal', 'Remove Tidal link from your account?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Disconnect', style: 'destructive', onPress: async () => {
+                    try {
+                        const res = await tidalApi.disconnect();
+                        setProfile(res.data.user);
+                        setTidalPlaylists([]);
+                        setTidalFavorites([]);
+                    } catch { Alert.alert('Error', 'Could not disconnect Tidal'); }
+                }
+            }
+        ]);
+    };
+
+    const handleDisconnectQobuz = () => {
+        Alert.alert('Disconnect Qobuz', 'Remove Qobuz link from your account?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Disconnect', style: 'destructive', onPress: async () => {
+                    try {
+                        const res = await qobuzApi.disconnect();
+                        setProfile(res.data.user);
+                        setQobuzPlaylists([]);
+                        setQobuzFavorites([]);
+                    } catch { Alert.alert('Error', 'Could not disconnect Qobuz'); }
                 }
             }
         ]);
@@ -387,7 +471,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                 setEditData({
                     display_name: profileRes.data.display_name || '',
                     bio: profileRes.data.bio || '',
-                    favorite_genres: profileRes.data.favorite_genres || ''
+                    favorite_genres: profileRes.data.favorite_genres || '',
+                    avatar_url: profileRes.data.avatar_url || ''
                 });
             }
         } catch { }
@@ -578,127 +663,24 @@ export default function ProfileScreen({ navigation, route }: any) {
             {/* ── Stats card ─────────────────────────────────────────── */}
             <View style={{ marginHorizontal: 20, marginTop: 16, flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                 {[
-                    { label: 'Posts', val: profile?.posts_count ?? 0 }, 
-                    { label: 'Followers', val: profile?.followers_count ?? 0 }, 
-                    { label: 'Following', val: profile?.following_count ?? 0 },
-                    { label: 'Collection', val: profile?.collection_count ?? 0 }
-                ].map((s, i, arr) => (
-                    <View key={s.label} style={{ flex: 1, alignItems: 'center', paddingVertical: 14, borderRightWidth: i < arr.length - 1 ? 1 : 0, borderRightColor: 'rgba(255,255,255,0.07)' }}>
-                        <Text style={{ color: 'white', fontWeight: '700', fontSize: 20 }}>{s.val}</Text>
-                        <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: '500' }}>{s.label}</Text>
-                    </View>
-                ))}
+                    { label: 'Posts', val: profile?.posts_count ?? 0, onPress: null }, 
+                    { label: 'Followers', val: profile?.followers_count ?? 0, onPress: () => navigation.navigate('FollowersList', { userId: targetId, listType: 'followers', username: profile?.username }) }, 
+                    { label: 'Following', val: profile?.following_count ?? 0, onPress: () => navigation.navigate('FollowersList', { userId: targetId, listType: 'following', username: profile?.username }) },
+                    { label: 'Collection', val: profile?.collection_count ?? 0, onPress: () => navigation.navigate('Collection', { userId: targetId, username: profile?.username }) }
+                ].map((s, i, arr) => {
+                    const Wrapper = s.onPress ? TouchableOpacity : View;
+                    return (
+                        <Wrapper key={s.label} onPress={s.onPress || undefined} style={{ flex: 1, alignItems: 'center', paddingVertical: 14, borderRightWidth: i < arr.length - 1 ? 1 : 0, borderRightColor: 'rgba(255,255,255,0.07)' }}>
+                            <Text style={{ color: 'white', fontWeight: '700', fontSize: 20 }}>{s.val}</Text>
+                            <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: '500' }}>{s.label}</Text>
+                        </Wrapper>
+                    );
+                })}
             </View>
 
             {/* ── Action buttons ─────────────────────────────────────── */}
             <View style={{ marginHorizontal: 20, marginTop: 14 }}>
-                {isMe ? (
-                    <View>
-                        {/* Music Service Selector */}
-                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                            <TouchableOpacity 
-                                onPress={() => profile?.has_spotify_linked ? setSelectedMusicService('spotify') : spotifyPromptAsync()} 
-                                disabled={!spotifyRequest}
-                                style={{ 
-                                    flex: 1, 
-                                    flexDirection: 'row', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center',
-                                    gap: 6, 
-                                    backgroundColor: profile?.has_spotify_linked ? (selectedMusicService === 'spotify' ? 'rgba(29,185,84,0.15)' : 'rgba(29,185,84,0.08)') : 'rgba(255,255,255,0.05)', 
-                                    borderRadius: 100, 
-                                    paddingVertical: 10,
-                                    borderWidth: 1, 
-                                    borderColor: profile?.has_spotify_linked ? (selectedMusicService === 'spotify' ? 'rgba(29,185,84,0.4)' : 'rgba(29,185,84,0.2)') : 'rgba(255,255,255,0.1)'
-                                }}
-                            >
-                                <FontAwesome5 name="spotify" size={12} color={profile?.has_spotify_linked ? "#1DB954" : "#888"} />
-                                <Text style={{ color: profile?.has_spotify_linked ? '#1DB954' : '#888', fontWeight: '600', fontSize: 12 }}>
-                                    {profile?.has_spotify_linked ? 'Spotify' : 'Connect'}
-                                </Text>
-                            </TouchableOpacity>
-                            
-                            <TouchableOpacity 
-                                onPress={() => {
-                                    if (profile?.has_youtube_linked) {
-                                        setSelectedMusicService('youtube');
-                                    } else {
-                                        if (YOUTUBE_CLIENT_ID) {
-                                            youtubePromptAsync();
-                                        } else {
-                                            Alert.alert('Not Configured', 'YouTube Music integration requires setup in the backend');
-                                        }
-                                    }
-                                }}
-                                disabled={false}
-                                style={{
-                                    flex: 1,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 6, 
-                                    backgroundColor: profile?.has_youtube_linked ? (selectedMusicService === 'youtube' ? 'rgba(255,0,0,0.15)' : 'rgba(255,0,0,0.08)') : 'rgba(255,255,255,0.05)', 
-                                    borderRadius: 100, 
-                                    paddingVertical: 10,
-                                    borderWidth: 1, 
-                                    borderColor: profile?.has_youtube_linked ? (selectedMusicService === 'youtube' ? 'rgba(255,0,0,0.4)' : 'rgba(255,0,0,0.2)') : 'rgba(255,255,255,0.1)'
-                                }}
-                            >
-                                <FontAwesome5 name="youtube" size={12} color={profile?.has_youtube_linked ? "#FF0000" : "#888"} />
-                                <Text style={{ color: profile?.has_youtube_linked ? '#FF0000' : '#888', fontWeight: '600', fontSize: 12 }}>
-                                    {profile?.has_youtube_linked ? 'YouTube' : 'Connect'}
-                                </Text>
-                            </TouchableOpacity>
-                            
-                            <TouchableOpacity 
-                                onPress={() => {
-                                    if (profile?.has_apple_music_linked) {
-                                        setSelectedMusicService('apple');
-                                    } else {
-                                        Alert.alert('Apple Music', 'Apple Music integration requires MusicKit setup. This feature is coming soon!');
-                                    }
-                                }}
-                                style={{ 
-                                    flex: 1, 
-                                    flexDirection: 'row', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center',
-                                    gap: 6, 
-                                    backgroundColor: profile?.has_apple_music_linked ? (selectedMusicService === 'apple' ? 'rgba(252,58,110,0.15)' : 'rgba(252,58,110,0.08)') : 'rgba(255,255,255,0.05)', 
-                                    borderRadius: 100, 
-                                    paddingVertical: 10,
-                                    borderWidth: 1, 
-                                    borderColor: profile?.has_apple_music_linked ? (selectedMusicService === 'apple' ? 'rgba(252,58,110,0.4)' : 'rgba(252,58,110,0.2)') : 'rgba(255,255,255,0.1)'
-                                }}
-                            >
-                                <FontAwesome5 name="apple" size={12} color={profile?.has_apple_music_linked ? "#FC3A6E" : "#888"} />
-                                <Text style={{ color: profile?.has_apple_music_linked ? '#FC3A6E' : '#888', fontWeight: '600', fontSize: 12 }}>
-                                    {profile?.has_apple_music_linked ? 'Apple' : 'Connect'}
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-                        
-                        {/* Disconnect button for selected service */}
-                        {selectedMusicService === 'spotify' && profile?.has_spotify_linked && (
-                            <TouchableOpacity onPress={handleDisconnectSpotify} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, borderRadius: 100, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }}>
-                                <Ionicons name="unlink-outline" size={14} color="#f87171" />
-                                <Text style={{ color: '#f87171', fontWeight: '600', fontSize: 12 }}>Disconnect Spotify</Text>
-                            </TouchableOpacity>
-                        )}
-                        {selectedMusicService === 'youtube' && profile?.has_youtube_linked && (
-                            <TouchableOpacity onPress={handleDisconnectYouTube} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, borderRadius: 100, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }}>
-                                <Ionicons name="unlink-outline" size={14} color="#f87171" />
-                                <Text style={{ color: '#f87171', fontWeight: '600', fontSize: 12 }}>Disconnect YouTube Music</Text>
-                            </TouchableOpacity>
-                        )}
-                        {selectedMusicService === 'apple' && profile?.has_apple_music_linked && (
-                            <TouchableOpacity onPress={handleDisconnectAppleMusic} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, borderRadius: 100, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }}>
-                                <Ionicons name="unlink-outline" size={14} color="#f87171" />
-                                <Text style={{ color: '#f87171', fontWeight: '600', fontSize: 12 }}>Disconnect Apple Music</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                ) : (
+                {!isMe && (
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                         <TouchableOpacity
                             onPress={handleFollow}

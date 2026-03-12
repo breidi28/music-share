@@ -3,15 +3,18 @@ import { View, FlatList, RefreshControl, ActivityIndicator, StyleSheet, Text } f
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PostCard from '../components/PostCard';
-import { activityApi } from '../api/endpoints';
+import { activityApi, postsApi } from '../api/endpoints';
 import { Post } from '../types';
 import { Colors } from '../theme';
+import CommentsModal from '../components/CommentsModal';
 
 export default function ActivityScreen({ navigation }: any) {
     const insets = useSafeAreaInsets();
     const [activities, setActivities] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+    const [commentsVisible, setCommentsVisible] = useState(false);
 
     const load = useCallback(async (isRefresh = false) => {
         if (isRefresh) setRefreshing(true);
@@ -30,8 +33,26 @@ export default function ActivityScreen({ navigation }: any) {
     }, [load]);
 
     const handleLike = async (postId: number) => {
-        // TODO: Implement like handling
-        console.log('Like post:', postId);
+        try {
+            await postsApi.likePost(postId);
+            // Update local state
+            setActivities(prev => prev.map(post => 
+                post.id === postId 
+                    ? { 
+                        ...post, 
+                        is_liked: !post.is_liked,
+                        likes_count: post.is_liked ? post.likes_count - 1 : post.likes_count + 1 
+                    }
+                    : post
+            ));
+        } catch (err) {
+            console.error('Failed to like post:', err);
+        }
+    };
+
+    const handleComment = (post: Post) => {
+        setSelectedPost(post);
+        setCommentsVisible(true);
     };
 
     return (
@@ -60,7 +81,7 @@ export default function ActivityScreen({ navigation }: any) {
                     <PostCard
                         post={item}
                         onLike={handleLike}
-                        onComment={(post) => console.log('Comment on:', post)}
+                        onComment={handleComment}
                         onAuthorPress={(uid) => navigation.navigate('Profile', { userId: uid })}
                         isOwn={false}
                     />
@@ -89,6 +110,18 @@ export default function ActivityScreen({ navigation }: any) {
                     )
                 }
             />
+
+            {/* Comments Modal */}
+            {selectedPost && (
+                <CommentsModal
+                    visible={commentsVisible}
+                    onClose={() => {
+                        setCommentsVisible(false);
+                        setSelectedPost(null);
+                    }}
+                    post={selectedPost}
+                />
+            )}
         </View>
     );
 }

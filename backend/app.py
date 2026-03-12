@@ -109,6 +109,23 @@ class User(db.Model):
     apple_music_user_token = db.Column(db.String(2000), default='')
     apple_music_token_expires_at = db.Column(db.DateTime, nullable=True)
 
+    # Tidal OAuth
+    tidal_session_id = db.Column(db.String(500), default='')
+    tidal_access_token = db.Column(db.String(500), default='')
+    tidal_refresh_token = db.Column(db.String(500), default='')
+    tidal_user_id = db.Column(db.String(100), default='')
+    tidal_token_expires_at = db.Column(db.DateTime, nullable=True)
+
+    # Qobuz OAuth
+    qobuz_user_auth_token = db.Column(db.String(500), default='')
+    qobuz_user_id = db.Column(db.String(100), default='')
+    qobuz_token_expires_at = db.Column(db.DateTime, nullable=True)
+
+    # Deezer OAuth
+    deezer_access_token = db.Column(db.String(500), default='')
+    deezer_user_id = db.Column(db.String(100), default='')
+    deezer_token_expires_at = db.Column(db.DateTime, nullable=True)
+
     posts = db.relationship('Post', backref='author', lazy=True, cascade='all, delete-orphan')
     followed = db.relationship('User', secondary=followers,
         primaryjoin=(followers.c.follower_id == id),
@@ -136,6 +153,9 @@ class User(db.Model):
             'has_spotify_linked': bool(self.spotify_access_token),
             'has_youtube_linked': bool(self.youtube_access_token),
             'has_apple_music_linked': bool(self.apple_music_user_token),
+            'has_tidal_linked': bool(self.tidal_access_token),
+            'has_qobuz_linked': bool(self.qobuz_user_auth_token),
+            'has_deezer_linked': bool(self.deezer_access_token),
             'current_streak': self.current_streak,
             'longest_streak': self.longest_streak,
             'collection_count': len(self.collection_items) if hasattr(self, 'collection_items') else 0,
@@ -415,6 +435,8 @@ def get_me():
 
 import requests
 import base64
+from ytmusicapi import YTMusic
+import tidalapi
 
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID', '')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET', '')
@@ -428,6 +450,20 @@ YOUTUBE_REDIRECT_URI = os.getenv('YOUTUBE_REDIRECT_URI', 'exp://localhost:8081')
 # Apple Music credentials
 APPLE_MUSIC_TEAM_ID = os.getenv('APPLE_MUSIC_TEAM_ID', '')
 APPLE_MUSIC_KEY_ID = os.getenv('APPLE_MUSIC_KEY_ID', '')
+
+# Tidal credentials
+TIDAL_CLIENT_ID = os.getenv('TIDAL_CLIENT_ID', '')
+TIDAL_CLIENT_SECRET = os.getenv('TIDAL_CLIENT_SECRET', '')
+
+# Qobuz credentials
+QOBUZ_APP_ID = os.getenv('QOBUZ_APP_ID', '')
+QOBUZ_APP_SECRET = os.getenv('QOBUZ_APP_SECRET', '')
+
+# Deezer credentials
+DEEZER_APP_ID = os.getenv('DEEZER_APP_ID', '')
+DEEZER_APP_SECRET = os.getenv('DEEZER_APP_SECRET', '')
+DEEZER_REDIRECT_URI = os.getenv('DEEZER_REDIRECT_URI', 'exp://localhost:8081')
+
 APPLE_MUSIC_PRIVATE_KEY = os.getenv('APPLE_MUSIC_PRIVATE_KEY', '')
 
 @app.route('/api/integrations/spotify/callback', methods=['POST'])
@@ -725,20 +761,28 @@ def spotify_disconnect():
 
 # ─── YouTube Music Integration ────────────────────────────────────────────────
 
-def _youtube_get(user, endpoint: str):
-    """Helper: refresh YouTube token if needed, then call YouTube Music API."""
+def _get_ytmusic_client(user):
+    """Get YTMusic client with OAuth credentials for the user."""
     if not user.youtube_access_token:
-        app.logger.warning(f'[YouTube] User {user.id} has no access token')
+        app.logger.warning(f'[YouTube Music] User {user.id} has no access token')
         return None, 'YouTube Music not linked'
 
+    # Check if token needs refresh
     if user.youtube_token_expires_at and datetime.utcnow() > user.youtube_token_expires_at:
-        app.logger.info(f'[YouTube] Refreshing token for user {user.id}')
-        auth_str = f"{YOUTUBE_CLIENT_ID}:{YOUTUBE_CLIENT_SECRET}"
-        b64 = base64.b64encode(auth_str.encode()).decode()
+        if not user.youtube_refresh_token:
+            app.logger.warning(f'[YouTube Music] User {user.id} token expired and no refresh token')
+            return None, 'YouTube Music token expired - please reconnect'
+        
+        app.logger.info(f'[YouTube Music] Refreshing token for user {user.id}')
         try:
             res = requests.post(
                 'https://oauth2.googleapis.com/token',
-                data={'grant_type': 'refresh_token', 'refresh_token': user.youtube_refresh_token, 'client_id': YOUTUBE_CLIENT_ID, 'client_secret': YOUTUBE_CLIENT_SECRET},
+                data={
+                    'grant_type': 'refresh_token',
+                    'refresh_token': user.youtube_refresh_token,
+                    'client_id': YOUTUBE_CLIENT_ID,
+                    'client_secret': YOUTUBE_CLIENT_SECRET
+                },
                 headers={'Content-Type': 'application/x-www-form-urlencoded'},
                 timeout=10
             )
@@ -747,31 +791,30 @@ def _youtube_get(user, endpoint: str):
                 user.youtube_access_token = info['access_token']
                 user.youtube_token_expires_at = datetime.utcnow() + timedelta(seconds=info.get('expires_in', 3600))
                 db.session.commit()
-                app.logger.info(f'[YouTube] Token refreshed successfully for user {user.id}')
+                app.logger.info(f'[YouTube Music] Token refreshed successfully for user {user.id}')
             else:
-                app.logger.error(f'[YouTube] Token refresh failed for user {user.id}: {info}')
+                app.logger.error(f'[YouTube Music] Token refresh failed for user {user.id}: {info}')
                 return None, 'Token refresh failed'
         except Exception as e:
-            app.logger.error(f'[YouTube] Token refresh exception for user {user.id}: {str(e)}')
+            app.logger.error(f'[YouTube Music] Token refresh exception for user {user.id}: {str(e)}')
             return None, str(e)
 
     try:
-        app.logger.debug(f'[YouTube] Fetching {endpoint} for user {user.id}')
-        r = requests.get(
-            f'https://www.googleapis.com/youtube/v3/{endpoint}',
-            headers={'Authorization': f"Bearer {user.youtube_access_token}"},
-            timeout=10
-        )
-        app.logger.debug(f'[YouTube] API response status: {r.status_code}')
-        if r.status_code == 401:
-            app.logger.warning(f'[YouTube] Unauthorized for user {user.id} - token may be invalid')
-            return None, 'Unauthorized – re-link YouTube Music'
-        if r.status_code >= 400:
-            app.logger.error(f'[YouTube] API error {r.status_code}: {r.text}')
-            return None, f'YouTube API error: {r.status_code}'
-        return r.json(), None
+        # Create OAuth credentials for ytmusicapi
+        oauth_credentials = {
+            "access_token": user.youtube_access_token,
+            "refresh_token": user.youtube_refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "client_id": YOUTUBE_CLIENT_ID,
+            "client_secret": YOUTUBE_CLIENT_SECRET
+        }
+        
+        # Initialize YTMusic with OAuth
+        ytmusic = YTMusic(oauth_credentials=oauth_credentials)
+        return ytmusic, None
     except Exception as e:
-        app.logger.error(f'[YouTube] Request exception for user {user.id}: {str(e)}')
+        app.logger.error(f'[YouTube Music] Client creation failed for user {user.id}: {str(e)}')
         return None, str(e)
 
 
@@ -828,6 +871,46 @@ def youtube_callback():
         return jsonify({'error': 'Failed to connect to YouTube Music'}), 503
 
 
+@app.route('/api/integrations/youtube/link-token', methods=['POST'])
+@jwt_required()
+def youtube_link_token():
+    """Link YouTube account directly with an access token (from mobile OAuth)."""
+    current_user_id = int(get_jwt_identity())
+    user = db.get_or_404(User, current_user_id)
+    
+    try:
+        data = request.get_json()
+        access_token = data.get('access_token')
+        
+        if not access_token:
+            return jsonify({'error': 'Missing access token'}), 400
+        
+        # Verify the token is valid by making a test API call
+        test_response = requests.get(
+            'https://www.googleapis.com/youtube/v3/channels?part=id&mine=true',
+            headers={'Authorization': f'Bearer {access_token}'},
+            timeout=10
+        )
+        
+        if test_response.status_code != 200:
+            app.logger.error(f'[YouTube] Token verification failed: {test_response.text}')
+            return jsonify({'error': 'Invalid access token'}), 400
+        
+        # Store the token
+        user.youtube_access_token = access_token
+        # Note: When using direct token (not code exchange), we don't get a refresh token
+        # The token will expire and the user will need to re-auth
+        user.youtube_token_expires_at = datetime.utcnow() + timedelta(hours=1)  # Google tokens typically expire in 1 hour
+        
+        db.session.commit()
+        app.logger.info(f'[YouTube] User {current_user_id} linked YouTube via direct token')
+        return jsonify({'message': 'YouTube Music linked successfully', 'user': user.to_dict(current_user_id)})
+        
+    except requests.RequestException as e:
+        app.logger.error(f'YouTube API error: {str(e)}')
+        return jsonify({'error': 'Failed to verify YouTube token'}), 503
+
+
 @app.route('/api/integrations/youtube/playlists', methods=['GET'])
 @jwt_required()
 def youtube_playlists():
@@ -835,26 +918,93 @@ def youtube_playlists():
     user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
     user = db.get_or_404(User, user_id)
 
-    # Use YouTube Data API v3 to fetch playlists
-    data, err = _youtube_get(user, 'playlists?part=snippet,contentDetails&mine=true&maxResults=20')
+    # Use ytmusicapi to fetch YouTube Music playlists
+    ytmusic, err = _get_ytmusic_client(user)
     if err:
-        app.logger.error(f'[YouTube Playlists] Error for user {user_id}: {err}')
+        app.logger.error(f'[YouTube Music Playlists] Error for user {user_id}: {err}')
         return jsonify({'error': err}), 400
 
-    items = data.get('items', []) if data else []
-    app.logger.info(f'[YouTube Playlists] Found {len(items)} playlists for user {user_id}')
-    
-    playlists = []
-    for p in items:
-        snippet = p.get('snippet', {})
-        playlists.append({
-            'name': snippet.get('title', ''),
-            'description': snippet.get('description', ''),
-            'image_url': snippet.get('thumbnails', {}).get('medium', {}).get('url', ''),
-            'track_count': p.get('contentDetails', {}).get('itemCount', 0),
-            'youtube_url': f"https://www.youtube.com/playlist?list={p.get('id', '')}",
-        })
-    return jsonify(playlists)
+    try:
+        # Get library playlists (user's playlists in YouTube Music)
+        library_playlists = ytmusic.get_library_playlists(limit=25)
+        app.logger.info(f'[YouTube Music Playlists] Found {len(library_playlists)} playlists for user {user_id}')
+        
+        playlists = []
+        for p in library_playlists:
+            playlists.append({
+                'name': p.get('title', ''),
+                'description': p.get('description', '') or '',
+                'image_url': p.get('thumbnails', [{}])[0].get('url', '') if p.get('thumbnails') else '',
+                'track_count': p.get('count', 0),
+                'youtube_url': f"https://music.youtube.com/playlist?list={p.get('playlistId', '')}",
+            })
+        return jsonify(playlists)
+    except Exception as e:
+        app.logger.error(f'[YouTube Music Playlists] Exception for user {user_id}: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/integrations/youtube/history', methods=['GET'])
+@jwt_required()
+def youtube_history():
+    """User's YouTube Music listening history (recently played)."""
+    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+
+    ytmusic, err = _get_ytmusic_client(user)
+    if err:
+        return jsonify({'error': err}), 400
+
+    try:
+        # Get recently played tracks
+        history = ytmusic.get_history()
+        app.logger.info(f'[YouTube Music History] Found {len(history)} tracks for user {user_id}')
+        
+        tracks = []
+        for item in history[:20]:  # Limit to 20 most recent
+            tracks.append({
+                'title': item.get('title', ''),
+                'artist': ', '.join([a.get('name', '') for a in item.get('artists', [])]),
+                'album': item.get('album', {}).get('name', '') if item.get('album') else '',
+                'image_url': item.get('thumbnails', [{}])[-1].get('url', '') if item.get('thumbnails') else '',
+                'duration': item.get('duration_seconds', 0),
+            })
+        return jsonify(tracks)
+    except Exception as e:
+        app.logger.error(f'[YouTube Music History] Exception for user {user_id}: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/integrations/youtube/liked', methods=['GET'])
+@jwt_required()
+def youtube_liked():
+    """User's liked songs from YouTube Music."""
+    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+
+    ytmusic, err = _get_ytmusic_client(user)
+    if err:
+        return jsonify({'error': err}), 400
+
+    try:
+        # Get liked songs
+        liked = ytmusic.get_liked_songs(limit=25)
+        tracks = liked.get('tracks', [])
+        app.logger.info(f'[YouTube Music Liked] Found {len(tracks)} liked songs for user {user_id}')
+        
+        songs = []
+        for item in tracks:
+            songs.append({
+                'title': item.get('title', ''),
+                'artist': ', '.join([a.get('name', '') for a in item.get('artists', [])]),
+                'album': item.get('album', {}).get('name', '') if item.get('album') else '',
+                'image_url': item.get('thumbnails', [{}])[-1].get('url', '') if item.get('thumbnails') else '',
+                'duration': item.get('duration_seconds', 0),
+            })
+        return jsonify(songs)
+    except Exception as e:
+        app.logger.error(f'[YouTube Music Liked] Exception for user {user_id}: {str(e)}')
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/integrations/youtube/disconnect', methods=['DELETE'])
@@ -961,6 +1111,476 @@ def apple_music_disconnect():
     user.apple_music_token_expires_at = None
     db.session.commit()
     return jsonify({'message': 'Apple Music disconnected', 'user': user.to_dict(current_user_id=user_id)})
+
+
+# ─── Tidal Integration ─────────────────────────────────────────────────────────
+
+@app.route('/api/integrations/tidal/auth-url', methods=['GET'])
+@jwt_required()
+def tidal_auth_url():
+    """Get Tidal OAuth authorization URL."""
+    if not TIDAL_CLIENT_ID or not TIDAL_CLIENT_SECRET:
+        return jsonify({'error': 'Tidal not configured'}), 500
+    
+    session = tidalapi.Session()
+    # Generate login URL
+    login_url, future = session.login_oauth()
+    
+    # Store the session temporarily (in production, use Redis or similar)
+    # For now, return the URL and the user will handle the flow
+    return jsonify({'auth_url': login_url})
+
+
+@app.route('/api/integrations/tidal/callback', methods=['POST'])
+@jwt_required()
+def tidal_callback():
+    """Complete Tidal OAuth flow and store tokens."""
+    current_user_id = int(get_jwt_identity())
+    user = db.get_or_404(User, current_user_id)
+    
+    try:
+        data = request.get_json()
+        # Tidal OAuth returns session data
+        access_token = data.get('access_token')
+        refresh_token = data.get('refresh_token')
+        user_id = data.get('user_id')
+        
+        if not access_token:
+            return jsonify({'error': 'Missing access token'}), 400
+        
+        user.tidal_access_token = access_token
+        user.tidal_refresh_token = refresh_token or ''
+        user.tidal_user_id = user_id or ''
+        user.tidal_token_expires_at = datetime.utcnow() + timedelta(days=30)
+        
+        db.session.commit()
+        return jsonify({'message': 'Tidal linked successfully', 'user': user.to_dict(current_user_id)})
+        
+    except Exception as e:
+        app.logger.error(f'Tidal callback error: {str(e)}')
+        return jsonify({'error': 'Failed to link Tidal'}), 503
+
+
+@app.route('/api/integrations/tidal/playlists', methods=['GET'])
+@jwt_required()
+def tidal_playlists():
+    """User's Tidal playlists."""
+    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+
+    if not user.tidal_access_token:
+        return jsonify({'error': 'Tidal not linked'}), 400
+
+    try:
+        # Create session with stored tokens
+        session = tidalapi.Session()
+        session.load_oauth_session(
+            token_type='Bearer',
+            access_token=user.tidal_access_token,
+            refresh_token=user.tidal_refresh_token
+        )
+        
+        # Get user's playlists
+        playlists_data = session.user.playlists()
+        
+        playlists = []
+        for p in playlists_data[:20]:  # Limit to 20
+            playlists.append({
+                'name': p.name,
+                'description': p.description or '',
+                'image_url': p.image(320) if hasattr(p, 'image') else '',
+                'track_count': p.num_tracks,
+                'tidal_url': p.url if hasattr(p, 'url') else '',
+            })
+        
+        return jsonify(playlists)
+        
+    except Exception as e:
+        app.logger.error(f'[Tidal] Error for user {user_id}: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/integrations/tidal/favorites', methods=['GET'])
+@jwt_required()
+def tidal_favorites():
+    """User's Tidal favorite tracks."""
+    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+
+    if not user.tidal_access_token:
+        return jsonify({'error': 'Tidal not linked'}), 400
+
+    try:
+        session = tidalapi.Session()
+        session.load_oauth_session(
+            token_type='Bearer',
+            access_token=user.tidal_access_token,
+            refresh_token=user.tidal_refresh_token
+        )
+        
+        # Get favorite tracks
+        favorites = session.user.favorites.tracks()
+        
+        tracks = []
+        for track in favorites[:25]:  # Limit to 25
+            tracks.append({
+                'title': track.name,
+                'artist': track.artist.name if track.artist else '',
+                'album': track.album.name if track.album else '',
+                'image_url': track.album.image(320) if track.album and hasattr(track.album, 'image') else '',
+                'duration': track.duration,
+            })
+        
+        return jsonify(tracks)
+        
+    except Exception as e:
+        app.logger.error(f'[Tidal] Favorites error for user {user_id}: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/integrations/tidal/disconnect', methods=['DELETE'])
+@jwt_required()
+def tidal_disconnect():
+    """Unlink Tidal from the user's account."""
+    user_id = int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+    user.tidal_access_token = ''
+    user.tidal_refresh_token = ''
+    user.tidal_user_id = ''
+    user.tidal_token_expires_at = None
+    db.session.commit()
+    return jsonify({'message': 'Tidal disconnected', 'user': user.to_dict(current_user_id=user_id)})
+
+
+# ─── Qobuz Integration ─────────────────────────────────────────────────────────
+
+@app.route('/api/integrations/qobuz/login', methods=['POST'])
+@jwt_required()
+def qobuz_login():
+    """Login to Qobuz with username and password."""
+    current_user_id = int(get_jwt_identity())
+    user = db.get_or_404(User, current_user_id)
+    
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return jsonify({'error': 'Missing credentials'}), 400
+        
+        if not QOBUZ_APP_ID or not QOBUZ_APP_SECRET:
+            return jsonify({'error': 'Qobuz not configured'}), 500
+        
+        # Authenticate with Qobuz
+        auth_response = requests.get(
+            'https://www.qobuz.com/api.json/0.2/user/login',
+            params={
+                'username': username,
+                'password': password,
+                'app_id': QOBUZ_APP_ID
+            },
+            timeout=10
+        )
+        
+        if auth_response.status_code != 200:
+            return jsonify({'error': 'Invalid credentials'}), 401
+        
+        auth_data = auth_response.json()
+        user_auth_token = auth_data.get('user_auth_token')
+        qobuz_user_id = str(auth_data.get('user', {}).get('id', ''))
+        
+        if not user_auth_token:
+            return jsonify({'error': 'Failed to get auth token'}), 400
+        
+        user.qobuz_user_auth_token = user_auth_token
+        user.qobuz_user_id = qobuz_user_id
+        user.qobuz_token_expires_at = datetime.utcnow() + timedelta(days=365)
+        
+        db.session.commit()
+        return jsonify({'message': 'Qobuz linked successfully', 'user': user.to_dict(current_user_id)})
+        
+    except Exception as e:
+        app.logger.error(f'Qobuz login error: {str(e)}')
+        return jsonify({'error': 'Failed to link Qobuz'}), 503
+
+
+@app.route('/api/integrations/qobuz/playlists', methods=['GET'])
+@jwt_required()
+def qobuz_playlists():
+    """User's Qobuz playlists."""
+    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+
+    if not user.qobuz_user_auth_token:
+        return jsonify({'error': 'Qobuz not linked'}), 400
+
+    try:
+        response = requests.get(
+            'https://www.qobuz.com/api.json/0.2/playlist/getUserPlaylists',
+            params={
+                'user_id': user.qobuz_user_id,
+                'app_id': QOBUZ_APP_ID,
+                'user_auth_token': user.qobuz_user_auth_token,
+                'limit': 20
+            },
+            timeout=10
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'error': 'Failed to fetch playlists'}), 400
+        
+        data = response.json()
+        playlists_data = data.get('playlists', {}).get('items', [])
+        
+        playlists = []
+        for p in playlists_data:
+            image_urls = p.get('images300', [])
+            playlists.append({
+                'name': p.get('name', ''),
+                'description': p.get('description', ''),
+                'image_url': image_urls[0] if image_urls else '',
+                'track_count': p.get('tracks_count', 0),
+                'qobuz_url': f"https://play.qobuz.com/playlist/{p.get('id', '')}",
+            })
+        
+        return jsonify(playlists)
+        
+    except Exception as e:
+        app.logger.error(f'[Qobuz] Error for user {user_id}: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/integrations/qobuz/favorites', methods=['GET'])
+@jwt_required()
+def qobuz_favorites():
+    """User's Qobuz favorite tracks."""
+    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+
+    if not user.qobuz_user_auth_token:
+        return jsonify({'error': 'Qobuz not linked'}), 400
+
+    try:
+        response = requests.get(
+            'https://www.qobuz.com/api.json/0.2/favorite/getUserFavorites',
+            params={
+                'user_id': user.qobuz_user_id,
+                'app_id': QOBUZ_APP_ID,
+                'user_auth_token': user.qobuz_user_auth_token,
+                'type': 'tracks',
+                'limit': 25
+            },
+            timeout=10
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'error': 'Failed to fetch favorites'}), 400
+        
+        data = response.json()
+        tracks_data = data.get('tracks', {}).get('items', [])
+        
+        tracks = []
+        for track in tracks_data:
+            album = track.get('album', {})
+            tracks.append({
+                'title': track.get('title', ''),
+                'artist': track.get('performer', {}).get('name', ''),
+                'album': album.get('title', ''),
+                'image_url': album.get('image', {}).get('small', '') or '',
+                'duration': track.get('duration', 0),
+            })
+        
+        return jsonify(tracks)
+        
+    except Exception as e:
+        app.logger.error(f'[Qobuz] Favorites error for user {user_id}: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/integrations/qobuz/disconnect', methods=['DELETE'])
+@jwt_required()
+def qobuz_disconnect():
+    """Unlink Qobuz from the user's account."""
+    user_id = int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+    user.qobuz_user_auth_token = ''
+    user.qobuz_user_id = ''
+    user.qobuz_token_expires_at = None
+    db.session.commit()
+    return jsonify({'message': 'Qobuz disconnected', 'user': user.to_dict(current_user_id=user_id)})
+
+
+# ─── Deezer Integration ────────────────────────────────────────────────────────
+
+@app.route('/api/integrations/deezer/callback', methods=['POST'])
+@jwt_required()
+def deezer_callback():
+    """Complete Deezer OAuth flow and store access token."""
+    current_user_id = int(get_jwt_identity())
+    user = db.get_or_404(User, current_user_id)
+    
+    try:
+        data = request.get_json()
+        code = data.get('code')
+        
+        if not code:
+            return jsonify({'error': 'Missing authorization code'}), 400
+        
+        if not DEEZER_APP_ID or not DEEZER_APP_SECRET:
+            return jsonify({'error': 'Deezer not configured'}), 500
+        
+        # Exchange code for access token
+        import requests
+        token_url = 'https://connect.deezer.com/oauth/access_token.php'
+        params = {
+            'app_id': DEEZER_APP_ID,
+            'secret': DEEZER_APP_SECRET,
+            'code': code,
+            'output': 'json'
+        }
+        
+        response = requests.get(token_url, params=params)
+        
+        if response.status_code != 200:
+            return jsonify({'error': 'Failed to exchange code for token'}), 400
+        
+        # Deezer returns access_token in query string format
+        from urllib.parse import parse_qs
+        token_data = parse_qs(response.text)
+        
+        if 'access_token' not in token_data:
+            # Try JSON format
+            try:
+                token_data = response.json()
+                access_token = token_data.get('access_token')
+            except:
+                return jsonify({'error': 'Invalid token response from Deezer'}), 400
+        else:
+            access_token = token_data['access_token'][0]
+        
+        if not access_token:
+            return jsonify({'error': 'No access token received'}), 400
+        
+        # Get user info to verify token
+        user_info_response = requests.get(
+            'https://api.deezer.com/user/me',
+            params={'access_token': access_token}
+        )
+        
+        if user_info_response.status_code != 200:
+            return jsonify({'error': 'Failed to verify Deezer token'}), 400
+        
+        user_info = user_info_response.json()
+        deezer_user_id = str(user_info.get('id', ''))
+        
+        # Store tokens
+        user.deezer_access_token = access_token
+        user.deezer_user_id = deezer_user_id
+        # Deezer access tokens don't expire by default, but we'll set a far future date
+        user.deezer_token_expires_at = datetime.utcnow() + timedelta(days=3650)
+        
+        db.session.commit()
+        return jsonify({'message': 'Deezer linked successfully', 'user': user.to_dict(current_user_id)})
+        
+    except Exception as e:
+        app.logger.error(f'Deezer callback error: {str(e)}')
+        return jsonify({'error': 'Failed to link Deezer'}), 503
+
+
+@app.route('/api/integrations/deezer/playlists', methods=['GET'])
+@jwt_required()
+def deezer_playlists():
+    """Get user's Deezer playlists."""
+    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+
+    if not user.deezer_access_token:
+        return jsonify({'error': 'Deezer not linked'}), 400
+
+    try:
+        import requests
+        response = requests.get(
+            f'https://api.deezer.com/user/{user.deezer_user_id}/playlists',
+            params={'access_token': user.deezer_access_token}
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'error': 'Failed to fetch playlists'}), 500
+        
+        data = response.json()
+        playlists = []
+        
+        for p in data.get('data', [])[:20]:  # Limit to 20
+            playlists.append({
+                'name': p.get('title', ''),
+                'description': '',
+                'image_url': p.get('picture_medium', ''),
+                'track_count': p.get('nb_tracks', 0),
+                'deezer_url': p.get('link', ''),
+            })
+        
+        return jsonify(playlists)
+        
+    except Exception as e:
+        app.logger.error(f'[Deezer] Playlists error for user {user_id}: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/integrations/deezer/favorites', methods=['GET'])
+@jwt_required()
+def deezer_favorites():
+    """Get user's Deezer favorite tracks."""
+    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+
+    if not user.deezer_access_token:
+        return jsonify({'error': 'Deezer not linked'}), 400
+
+    try:
+        import requests
+        response = requests.get(
+            f'https://api.deezer.com/user/{user.deezer_user_id}/tracks',
+            params={'access_token': user.deezer_access_token}
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'error': 'Failed to fetch favorites'}), 500
+        
+        data = response.json()
+        tracks = []
+        
+        for track in data.get('data', [])[:25]:  # Limit to 25
+            album = track.get('album', {})
+            artist = track.get('artist', {})
+            
+            tracks.append({
+                'title': track.get('title', ''),
+                'artist': artist.get('name', ''),
+                'album': album.get('title', ''),
+                'image_url': album.get('cover_medium', ''),
+                'duration': track.get('duration', 0),
+                'deezer_url': track.get('link', ''),
+            })
+        
+        return jsonify(tracks)
+        
+    except Exception as e:
+        app.logger.error(f'[Deezer] Favorites error for user {user_id}: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/integrations/deezer/disconnect', methods=['DELETE'])
+@jwt_required()
+def deezer_disconnect():
+    """Unlink Deezer from the user's account."""
+    user_id = int(get_jwt_identity())
+    user = db.get_or_404(User, user_id)
+    user.deezer_access_token = ''
+    user.deezer_user_id = ''
+    user.deezer_token_expires_at = None
+    db.session.commit()
+    return jsonify({'message': 'Deezer disconnected', 'user': user.to_dict(current_user_id=user_id)})
 
 
 # ─── User Routes ───────────────────────────────────────────────────────────────
@@ -1477,7 +2097,30 @@ def update_collection_item(item_id):
             if url and not validate_url(url):
                 return jsonify({'error': 'Invalid URL'}), 400
             item.album_art_url = url
+        if 'media_type' in data:
+            # Validate media type
+            valid_types = ['vinyl', 'cd', 'cassette', 'digital']
+            media_type = data['media_type']
+            if media_type not in valid_types:
+                return jsonify({'error': 'Invalid media type'}), 400
+            item.media_type = media_type
+        if 'release_year' in data:
+            year = data['release_year']
+            if year is not None:
+                if not isinstance(year, int) or year < 1900 or year > 2100:
+                    return jsonify({'error': 'Invalid release year'}), 400
+            item.release_year = year
+        if 'purchase_date' in data:
+            date_str = data['purchase_date']
+            if date_str:
+                try:
+                    item.purchase_date = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+                except (ValueError, AttributeError):
+                    return jsonify({'error': 'Invalid purchase date format'}), 400
+            else:
+                item.purchase_date = None
         
+        db.session.flush()
         db.session.commit()
         return jsonify(item.to_dict())
     
@@ -1553,6 +2196,65 @@ def search_music():
         return jsonify(results)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/music/barcode/<barcode>', methods=['GET'])
+@jwt_required()
+def search_by_barcode(barcode):
+    """Search for album by barcode using MusicBrainz API."""
+    try:
+        # MusicBrainz API - search by barcode
+        url = f'https://musicbrainz.org/ws/2/release/?query=barcode:{barcode}&fmt=json'
+        headers = {'User-Agent': 'MusicShareApp/1.0'}
+        
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json_lib.loads(response.read())
+        
+        releases = data.get('releases', [])
+        if not releases:
+            return jsonify({'error': 'No album found for this barcode'}), 404
+        
+        # Get the first release (most relevant)
+        release = releases[0]
+        
+        # Try to get cover art from Cover Art Archive
+        album_art_url = None
+        release_id = release.get('id')
+        if release_id:
+            try:
+                art_url = f'https://coverartarchive.org/release/{release_id}/front-250'
+                art_req = urllib.request.Request(art_url, headers=headers)
+                with urllib.request.urlopen(art_req, timeout=5) as art_response:
+                    if art_response.status == 200:
+                        album_art_url = art_url
+            except:
+                pass  # Cover art not available
+        
+        # Extract artist names
+        artists = release.get('artist-credit', [])
+        artist_name = ', '.join([a.get('name', '') for a in artists if isinstance(a, dict) and 'name' in a])
+        
+        result = {
+            'album': release.get('title', ''),
+            'artist': artist_name,
+            'album_art_url': album_art_url,
+            'barcode': barcode,
+            'release_date': release.get('date', ''),
+            'country': release.get('country', ''),
+            'label': release.get('label-info', [{}])[0].get('label', {}).get('name', '') if release.get('label-info') else '',
+        }
+        
+        return jsonify(result)
+    
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return jsonify({'error': 'No album found for this barcode'}), 404
+        return jsonify({'error': f'MusicBrainz API error: {e.code}'}), 500
+    except Exception as e:
+        app.logger.error(f'Barcode lookup error: {str(e)}')
+        return jsonify({'error': 'Failed to lookup barcode'}), 500
+
 
 import urllib.parse
 

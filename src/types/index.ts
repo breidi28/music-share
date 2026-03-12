@@ -13,6 +13,9 @@ export interface User {
   has_spotify_linked?: boolean;
   has_youtube_linked?: boolean;
   has_apple_music_linked?: boolean;
+  has_tidal_linked?: boolean;
+  has_qobuz_linked?: boolean;
+  has_deezer_linked?: boolean;
   current_streak: number;
   longest_streak: number;
   collection_count: number;

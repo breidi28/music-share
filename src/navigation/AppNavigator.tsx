@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { enableScreens } from 'react-native-screens';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Enable native screens for better performance and gestures
 enableScreens();
@@ -20,14 +21,22 @@ import ShareScreen from '../screens/ShareScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SearchScreen from '../screens/SearchScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
-import ActivityScreen from '../screens/ActivityScreen';
 import CollectionScreen from '../screens/CollectionScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import TermsScreen from '../screens/TermsScreen';
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import HelpSupportScreen from '../screens/HelpSupportScreen';
+import FollowersListScreen from '../screens/FollowersListScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function TabNavigator() {
+    const insets = useSafeAreaInsets();
+    
+    // Calculate tab bar height with safe area insets
+    const tabBarHeight = Platform.OS === 'ios' ? 64 + insets.bottom : 58 + insets.bottom;
+    
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
@@ -38,15 +47,15 @@ function TabNavigator() {
                     backgroundColor: 'rgba(28, 28, 30, 0.72)', // iOS-style translucent dark
                     borderTopColor: 'rgba(255, 255, 255, 0.1)',
                     borderTopWidth: 0.5,
-                    height: 88, // Standard iOS tab bar height with safe area
-                    paddingBottom: 24, // Safe area padding
+                    height: tabBarHeight,
+                    paddingBottom: Math.max(insets.bottom, 8), // Use safe area bottom or minimum 8
                     paddingTop: 8,
                 } : {
                     backgroundColor: '#1a1a1a',
                     borderTopColor: 'rgba(255, 255, 255, 0.1)',
                     borderTopWidth: 1,
-                    height: 68,
-                    paddingBottom: 10,
+                    height: tabBarHeight,
+                    paddingBottom: Math.max(insets.bottom, 10), // Use safe area bottom or minimum 10
                     paddingTop: 8,
                 },
                 tabBarActiveTintColor: Colors.primary, // Apple Music Pink/Red active tint
@@ -65,7 +74,6 @@ function TabNavigator() {
                         Feed: { active: 'home', inactive: 'home-outline' },
                         Explore: { active: 'compass', inactive: 'compass-outline' },
                         Share: { active: 'add-circle', inactive: 'add-circle-outline' },
-                        Activity: { active: 'pulse', inactive: 'pulse-outline' },
                         Collection: { active: 'albums', inactive: 'albums-outline' },
                         MyProfile: { active: 'person', inactive: 'person-outline' },
                     };
@@ -97,9 +105,8 @@ function TabNavigator() {
         >
             <Tab.Screen name="Feed" component={FeedScreen} options={{ tabBarLabel: 'Home' }} />
             <Tab.Screen name="Explore" component={ExploreScreen} />
-            <Tab.Screen name="Collection" component={CollectionScreen} />
             <Tab.Screen name="Share" component={ShareScreen} options={{ tabBarLabel: '' }} />
-            <Tab.Screen name="Activity" component={ActivityScreen} />
+            <Tab.Screen name="Collection" component={CollectionScreen} />
             <Tab.Screen name="MyProfile" component={ProfileScreen} options={{ tabBarLabel: 'Profile' }} />
         </Tab.Navigator>
     );
@@ -183,6 +190,46 @@ export default function AppNavigator() {
                         <Stack.Screen 
                             name="Settings" 
                             component={SettingsScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen 
+                            name="Terms" 
+                            component={TermsScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen 
+                            name="PrivacyPolicy" 
+                            component={PrivacyPolicyScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen 
+                            name="HelpSupport" 
+                            component={HelpSupportScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen 
+                            name="FollowersList" 
+                            component={FollowersListScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen 
+                            name="Collection" 
+                            component={CollectionScreen}
                             options={{
                                 presentation: 'card',
                                 animation: 'slide_from_right',

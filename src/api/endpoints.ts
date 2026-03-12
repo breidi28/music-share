@@ -61,7 +61,10 @@ export const spotifyApi = {
 // YouTube Music
 export const youtubeApi = {
     callback: (code: string, redirectUri: string) => client.post('/integrations/youtube/callback', { code, redirect_uri: redirectUri }),
+    linkWithToken: (accessToken: string) => client.post('/integrations/youtube/link-token', { access_token: accessToken }),
     getPlaylists: (userId?: number) => client.get('/integrations/youtube/playlists', { params: { user_id: userId } }),
+    getHistory: (userId?: number) => client.get('/integrations/youtube/history', { params: { user_id: userId } }),
+    getLiked: (userId?: number) => client.get('/integrations/youtube/liked', { params: { user_id: userId } }),
     disconnect: () => client.delete('/integrations/youtube/disconnect'),
 };
 
@@ -72,9 +75,36 @@ export const appleMusicApi = {
     disconnect: () => client.delete('/integrations/apple/disconnect'),
 };
 
+// Tidal
+export const tidalApi = {
+    getAuthUrl: () => client.get('/integrations/tidal/auth-url'),
+    callback: (accessToken: string, refreshToken?: string, userId?: string) => 
+        client.post('/integrations/tidal/callback', { access_token: accessToken, refresh_token: refreshToken, user_id: userId }),
+    getPlaylists: (userId?: number) => client.get('/integrations/tidal/playlists', { params: { user_id: userId } }),
+    getFavorites: (userId?: number) => client.get('/integrations/tidal/favorites', { params: { user_id: userId } }),
+    disconnect: () => client.delete('/integrations/tidal/disconnect'),
+};
+
+// Qobuz
+export const qobuzApi = {
+    login: (username: string, password: string) => client.post('/integrations/qobuz/login', { username, password }),
+    getPlaylists: (userId?: number) => client.get('/integrations/qobuz/playlists', { params: { user_id: userId } }),
+    getFavorites: (userId?: number) => client.get('/integrations/qobuz/favorites', { params: { user_id: userId } }),
+    disconnect: () => client.delete('/integrations/qobuz/disconnect'),
+};
+
+// Deezer
+export const deezerApi = {
+    callback: (code: string) => client.post('/integrations/deezer/callback', { code }),
+    getPlaylists: (userId?: number) => client.get('/integrations/deezer/playlists', { params: { user_id: userId } }),
+    getFavorites: (userId?: number) => client.get('/integrations/deezer/favorites', { params: { user_id: userId } }),
+    disconnect: () => client.delete('/integrations/deezer/disconnect'),
+};
+
 // Music search (iTunes)
 export const musicApi = {
     search: (q: string) => client.get<MusicSearchResult[]>(`/music/search?q=${encodeURIComponent(q)}`),
+    searchByBarcode: (barcode: string) => client.get<any>(`/music/barcode/${barcode}`),
 };
 
 // Notifications

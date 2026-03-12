@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Wi-Fi LAN IP of the dev machine – phone must be on the same network
-export const API_BASE_URL = 'http://192.168.1.179:5000/api';
+export const API_BASE_URL = 'http://192.168.100.49:5000/api';
 
 const client = axios.create({
     baseURL: API_BASE_URL,
