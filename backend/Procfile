@@ -1,2 +1,0 @@
-# This file is used if you manually deploy the Web Service on Render instead of using render.yaml
-web: python -c "from app import db, app; app.app_context().push(); db.create_all()" && gunicorn app:app
