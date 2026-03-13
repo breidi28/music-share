@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: music-share-backend
+    env: python
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && python -c 'from app import db, app; app.app_context().push(); db.create_all()' && gunicorn app:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: CORS_ORIGINS
+        value: "*" # Update this to your deployed frontend domain once you have it
+      - key: FLASK_DEBUG
+        value: "False"
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: music-share-db
+          property: connectionString
+
+databases:
+  - name: music-share-db
+    databaseName: musicshare
+    user: musicshare_user

@@ -19,8 +19,19 @@ CORS(app, origins=ALLOWED_ORIGINS, methods=['GET', 'POST', 'PUT', 'DELETE', 'OPT
 
 # Config – use absolute path so DB location is stable regardless of cwd
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-db_path = os.getenv('DATABASE_PATH', 'instance/musicshare.db')
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(_BASE_DIR, db_path)}"
+
+# Setup Database connection
+database_url = os.getenv('DATABASE_URL')
+if database_url:
+    # Render's Postgres URLs start with postgres:// but SQLAlchemy requires postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    # Fallback to local SQLite database
+    db_path = os.getenv('DATABASE_PATH', 'instance/musicshare.db')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(_BASE_DIR, db_path)}"
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-change-in-production')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Reduced from 30 days
@@ -2275,4 +2286,5 @@ if __name__ == '__main__':
 
     # Use environment variable for debug mode (default to False for security)
     debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 'yes')
-    app.run(debug=debug_mode, host='0.0.0.0', port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
