@@ -1,0 +1,6 @@
+[build]
+  builder = "nixpacks"
+  
+[build.env]
+  NIXPACKS_PYTHON_VERSION = "3.11"
+  NIXPACKS_REQUIREMENTS_TXT = "backend/requirements.txt"
