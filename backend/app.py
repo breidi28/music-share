@@ -30,7 +30,12 @@ if database_url:
 else:
     # Fallback to local SQLite database
     db_path = os.getenv('DATABASE_PATH', 'instance/musicshare.db')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(_BASE_DIR, db_path)}"
+    full_db_path = os.path.join(_BASE_DIR, db_path)
+    
+    # Ensure the directory exists (e.g. 'instance/') so Railway doesn't crash if it's not in git
+    os.makedirs(os.path.dirname(full_db_path), exist_ok=True)
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{full_db_path}"
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-change-in-production')
