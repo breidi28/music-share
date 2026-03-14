@@ -1,8 +1,12 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Railway Production URL
-export const API_BASE_URL = 'https://music-share-production.up.railway.app/api';
+const PROD_API_BASE_URL = 'https://music-share-production.up.railway.app/api';
+const LOCAL_API_BASE_URL = 'http://127.0.0.1:5000/api';
+
+// Use EXPO_PUBLIC_API_URL when provided; otherwise default to local backend in dev.
+export const API_BASE_URL =
+    process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? LOCAL_API_BASE_URL : PROD_API_BASE_URL);
 
 const client = axios.create({
     baseURL: API_BASE_URL,

@@ -14,7 +14,8 @@ load_dotenv()
 app = Flask(__name__)
 
 # CORS Configuration – restrict to allowed origins
-ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:8081').split(',')
+_default_origins = 'http://localhost:8081,http://localhost:19006,http://127.0.0.1:8081,http://127.0.0.1:19006'
+ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('CORS_ORIGINS', _default_origins).split(',') if origin.strip()]
 CORS(app, origins=ALLOWED_ORIGINS, methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], supports_credentials=True)
 
 # Config – use absolute path so DB location is stable regardless of cwd
