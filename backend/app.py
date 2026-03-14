@@ -44,6 +44,16 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Reduced from 30 da
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
+# Basic liveness endpoints for hosting platform health checks
+@app.route('/', methods=['GET'])
+def root_health():
+    return jsonify({'status': 'ok', 'service': 'music-share-backend'}), 200
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'healthy'}), 200
+
 # ─── Input Validation Helpers ──────────────────────────────────────────────────
 
 MAX_USERNAME_LEN = 50
