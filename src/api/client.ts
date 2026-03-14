@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Railway Production URL
-export const API_BASE_URL = 'https://web-production-5c4f2.up.railway.app/api';
+export const API_BASE_URL = 'https://music-share-production.up.railway.app/api';
 
 const client = axios.create({
     baseURL: API_BASE_URL,
