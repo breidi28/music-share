@@ -2283,12 +2283,12 @@ def serve_upload(subpath, filename):
     uploads_dir = os.path.join(_BASE_DIR, 'uploads', subpath)
     return send_from_directory(uploads_dir, filename)
 
+# Initialize database tables automatically before first request if running via Gunicorn
+with app.app_context():
+    os.makedirs(os.path.join(_BASE_DIR, 'instance'), exist_ok=True)
+    db.create_all()
 
 if __name__ == '__main__':
-    with app.app_context():
-        os.makedirs(os.path.join(_BASE_DIR, 'instance'), exist_ok=True)
-        db.create_all()
-
     # Use environment variable for debug mode (default to False for security)
     debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 'yes')
     port = int(os.environ.get("PORT", 5000))
