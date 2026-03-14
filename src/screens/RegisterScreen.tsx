@@ -52,7 +52,7 @@ export default function RegisterScreen({ navigation }: any) {
                         <View className="w-16 h-16 bg-[#FA243C] rounded-full mb-4 justify-center items-center shadow-sm shadow-[#FA243C]/20">
                             <Ionicons name="musical-notes" size={28} color="white" />
                         </View>
-                        <Text className="text-gray-300 text-lg">Join tuneshare</Text>
+                        <Text className="text-gray-300 text-lg">Join musicshare</Text>
                     </View>
 
                     {/* Form */}

@@ -57,7 +57,7 @@ export default function LoginScreen({ navigation }: any) {
                         <View className="w-20 h-20 bg-[#FA243C] rounded-full mb-2 justify-center items-center shadow-sm shadow-[#FA243C]/20">
                             <Ionicons name="musical-notes" size={36} color="white" />
                         </View>
-                        <Text className="text-white font-bold text-4xl">tuneshare</Text>
+                        <Text className="text-white font-bold text-4xl">musicshare</Text>
                         <Text className="text-gray-500 text-base">Share what moves you.</Text>
                     </View>
 
