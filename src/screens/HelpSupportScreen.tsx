@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Linking } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme';
@@ -62,7 +63,7 @@ export default function HelpSupportScreen({ navigation }: any) {
 
     const handleContactSubmit = () => {
         if (!contactMessage.trim()) {
-            Alert.alert('Error', 'Please enter your message');
+            Toast.show({ type: 'error', text1: 'Error', text2: 'Please enter your message' });
             return;
         }
 
@@ -73,10 +74,10 @@ export default function HelpSupportScreen({ navigation }: any) {
         Linking.openURL(mailto)
             .then(() => {
                 setContactMessage('');
-                Alert.alert('Success', 'Your email app has been opened. Please send the email to reach our support team.');
+                Toast.show({ type: 'success', text1: 'Email App Opened', text2: 'Please send the email to reach our support.' });
             })
             .catch(() => {
-                Alert.alert('Error', 'Could not open email app. Please email us at support@musicshare.app');
+                Toast.show({ type: 'error', text1: 'Error', text2: 'Could not open email app. Please email us manually.' });
             });
     };
 
@@ -120,7 +121,7 @@ export default function HelpSupportScreen({ navigation }: any) {
                         icon="logo-twitter"
                         title="Follow Us"
                         description="@musicshareapp"
-                        onPress={() => Alert.alert('Social Media', 'Find us on Twitter @musicshareapp')}
+                        onPress={() => Toast.show({ type: 'info', text1: 'Social Media', text2: 'Find us on Twitter @musicshareapp' })}
                     />
                     
                     <QuickLinkCard

@@ -141,8 +141,6 @@ export default function ProfileScreen({ navigation, route }: any) {
         googleDiscovery
     );
 
-    console.log('[YouTube OAuth] Using redirect URI:', YOUTUBE_REDIRECT_URI);
-
     // Handle Spotify OAuth response
     useEffect(() => {
         if (spotifyResponse?.type === 'success') {
@@ -150,9 +148,9 @@ export default function ProfileScreen({ navigation, route }: any) {
             spotifyApi.callback(code, SPOTIFY_REDIRECT_URI)
                 .then(res => {
                     setProfile(res.data.user);
-                    Alert.alert('Success', 'Spotify linked successfully!');
+                    Toast.show({ type: 'success', text1: 'Spotify Linked', text2: 'Successfully linked Spotify' });
                 })
-                .catch(e => Alert.alert('Error', 'Failed to link Spotify'));
+                .catch(e => Toast.show({ type: 'error', text1: 'Failed to link Spotify' }));
         }
     }, [spotifyResponse]);
 
@@ -166,19 +164,19 @@ export default function ProfileScreen({ navigation, route }: any) {
                 youtubeApi.callback(code, YOUTUBE_REDIRECT_URI)
                     .then(res => {
                         setProfile(res.data.user);
-                        Alert.alert('Success', 'YouTube Music linked successfully!');
+                        Toast.show({ type: 'success', text1: 'YouTube Music Linked', text2: 'Successfully linked YouTube Music' });
                     })
                     .catch(e => {
                         console.error('[YouTube OAuth] Backend error:', e);
-                        Alert.alert('Error', 'Failed to link YouTube Music');
+                        Toast.show({ type: 'error', text1: 'Failed to link YouTube Music' });
                     });
             } else {
                 console.error('[YouTube OAuth] No authorization code in response params');
-                Alert.alert('Error', 'No authorization code received');
+                Toast.show({ type: 'error', text1: 'No authorization code received' });
             }
         } else if (youtubeResponse?.type === 'error') {
             console.error('[YouTube OAuth] Error:', youtubeResponse.error, youtubeResponse.params);
-            Alert.alert('Authentication Error', youtubeResponse.error?.message || 'Failed to authenticate with YouTube');
+            Toast.show({ type: 'error', text1: 'Authentication Error', text2: youtubeResponse.error?.message || 'Failed to authenticate with YouTube' });
         } else if (youtubeResponse?.type === 'dismiss') {
             console.log('[YouTube OAuth] User dismissed');
         }
@@ -199,7 +197,6 @@ export default function ProfileScreen({ navigation, route }: any) {
             .then(([recent, artists, playlists]) => {
                 console.log('[Spotify] Recent tracks:', recent.data?.length || 0, recent.data);
                 console.log('[Spotify] Top artists:', artists.data?.length || 0, artists.data);
-                console.log('[Spotify] Playlists:', playlists.data?.length || 0, playlists.data);
                 
                 setSpotifyRecent(Array.isArray(recent.data) ? recent.data : []);
                 setSpotifyArtists(Array.isArray(artists.data) ? artists.data : []);
@@ -209,7 +206,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                 console.error('[Spotify] Error fetching data:', err);
                 console.error('[Spotify] Error details:', err.response?.data);
                 if (err.response?.data?.error) {
-                    Alert.alert('Spotify Error', err.response.data.error);
+                    
                 }
                 // Set empty arrays on error
                 setSpotifyRecent([]);
@@ -241,7 +238,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                 console.error('[YouTube Music] Error fetching data:', err);
                 console.error('[YouTube Music] Error details:', err.response?.data);
                 if (err.response?.data?.error) {
-                    Alert.alert('YouTube Music Error', err.response.data.error);
+                    
                 }
                 setYoutubeHistory([]);
                 setYoutubeLiked([]);
@@ -263,7 +260,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                 console.error('[Apple Music] Error fetching data:', err);
                 console.error('[Apple Music] Error details:', err.response?.data);
                 if (err.response?.data?.error) {
-                    Alert.alert('Apple Music Error', err.response.data.error);
+                    
                 }
                 setApplePlaylists([]);
             })
@@ -280,7 +277,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                         setProfile(res.data.user);
                         setLiveTrack(null);
                         setSpotifyRecent([]); setSpotifyArtists([]); setSpotifyPlaylists([]);
-                    } catch { Alert.alert('Error', 'Could not disconnect Spotify'); }
+                    } catch {}
                 }
             }
         ]);
@@ -295,7 +292,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                         const res = await youtubeApi.disconnect();
                         setProfile(res.data.user);
                         setYoutubePlaylists([]);
-                    } catch { Alert.alert('Error', 'Could not disconnect YouTube Music'); }
+                    } catch {}
                 }
             }
         ]);
@@ -310,7 +307,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                         const res = await appleMusicApi.disconnect();
                         setProfile(res.data.user);
                         setApplePlaylists([]);
-                    } catch { Alert.alert('Error', 'Could not disconnect Apple Music'); }
+                    } catch {}
                 }
             }
         ]);
@@ -326,7 +323,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                         setProfile(res.data.user);
                         setTidalPlaylists([]);
                         setTidalFavorites([]);
-                    } catch { Alert.alert('Error', 'Could not disconnect Tidal'); }
+                    } catch {}
                 }
             }
         ]);
@@ -342,7 +339,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                         setProfile(res.data.user);
                         setQobuzPlaylists([]);
                         setQobuzFavorites([]);
-                    } catch { Alert.alert('Error', 'Could not disconnect Qobuz'); }
+                    } catch {}
                 }
             }
         ]);
@@ -359,7 +356,7 @@ export default function ProfileScreen({ navigation, route }: any) {
     useEffect(() => {
         let intervalId: ReturnType<typeof setInterval>;
 
-        const fetchLive = async () => {
+                const fetchLive = async () => {
             if (!profile) return;
             try {
                 const res = await spotifyApi.getLive(profile.id);
@@ -367,53 +364,8 @@ export default function ProfileScreen({ navigation, route }: any) {
 
                 if (data?.is_playing) {
                     setLiveTrack(data);
-
-                    const trackKey = `${data.track_title}||${data.artist}`;
-                    const isNewTrack = prevTrackRef.current !== trackKey;
-
-                    if (isNewTrack) {
-                        // ── New song detected ──────────────────────────────
-                        // If the PREVIOUS song was scrobble-eligible, save it now
-                        if (isMe && scrobbleEligibleRef.current && pendingScrobbleRef.current) {
-                            postsApi.create({
-                                ...pendingScrobbleRef.current,
-                                post_type: 'history',
-                                caption: '',
-                            }).catch(() => { });
-                        }
-
-                        // Reset eligibility for the new song
-                        prevTrackRef.current = trackKey;
-                        scrobbleEligibleRef.current = false;
-                        pendingScrobbleRef.current = {
-                            track_title: data.track_title,
-                            artist: data.artist,
-                            album: data.album,
-                            album_art_url: data.album_art_url,
-                            preview_url: data.preview_url,
-                        };
-                    } else if (isMe && !scrobbleEligibleRef.current && data.duration_ms > 0) {
-                        // ── Same song — check scrobble threshold ───────────
-                        // Last.fm rule: 50% listened OR 4 minutes (240 000 ms)
-                        const FOUR_MINUTES_MS = 240_000;
-                        const listenedPercent = data.progress_ms / data.duration_ms;
-                        const listenedMs = data.progress_ms;
-
-                        if (listenedPercent >= 0.5 || listenedMs >= FOUR_MINUTES_MS) {
-                            scrobbleEligibleRef.current = true;
-                            // Update snapshot in case metadata drifted
-                            pendingScrobbleRef.current = {
-                                track_title: data.track_title,
-                                artist: data.artist,
-                                album: data.album,
-                                album_art_url: data.album_art_url,
-                                preview_url: data.preview_url,
-                            };
-                        }
-                    }
                 } else {
                     setLiveTrack(null);
-                    // Don't reset refs on pause — keeps memory across pauses
                 }
             } catch (err: any) {
                 console.error('[Spotify Live] Error:', err);
@@ -444,10 +396,10 @@ export default function ProfileScreen({ navigation, route }: any) {
                 post_type: 'now_playing',
                 caption: '🎵 Currently listening on Spotify',
             });
-            Alert.alert('Shared!', 'Added to your feed as Now Playing.');
+            Toast.show({ type: 'success', text1: 'Shared!', text2: 'Added to your feed as Now Playing.' });
             load();
         } catch {
-            Alert.alert('Error', 'Could not share track.');
+            Toast.show({ type: 'error', text1: 'Could not share track' });
         }
         setSharingLive(false);
     };
@@ -503,7 +455,7 @@ export default function ProfileScreen({ navigation, route }: any) {
         const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
         
         if (permissionResult.granted === false) {
-            Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+            Toast.show({ type: 'error', text1: 'Permission Required', text2: 'Permission to access camera roll is required!' });
             return;
         }
 
@@ -528,7 +480,7 @@ export default function ProfileScreen({ navigation, route }: any) {
             const res = await usersApi.updateProfile(editData);
             setProfile(res.data);
             setEditMode(false);
-        } catch { Alert.alert('Error', 'Failed to update profile'); }
+        } catch {}
     };
 
     const handleDelete = async (postId: number) => {
@@ -547,121 +499,113 @@ export default function ProfileScreen({ navigation, route }: any) {
 
     const renderTopNav = () => (
         <BlurView
-            intensity={80}
+            intensity={90}
             tint="dark"
-            style={{ paddingTop: insets.top, position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)' }}
+            style={{ 
+                paddingTop: insets.top, 
+                position: 'absolute', 
+                top: 0, left: 0, right: 0, 
+                zIndex: 10,
+                borderBottomWidth: StyleSheet.hairlineWidth, 
+                borderBottomColor: 'rgba(255,255,255,0.1)' 
+            }}
         >
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 44 }}>
                 {!isMe ? (
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 6 }}>
-                        <Ionicons name="arrow-back" size={24} color="white" />
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4, flexDirection: 'row', alignItems: 'center', marginLeft: -8 }}>
+                        <Ionicons name="chevron-back" size={28} color={Colors.primary} />
+                        <Text style={{ color: Colors.primary, fontSize: 17, marginLeft: -4 }}>Back</Text>
                     </TouchableOpacity>
-                ) : <View style={{ width: 36 }} />}
+                ) : <View style={{ width: 60 }} />}
 
-                <Text style={{ color: '#9ca3af', fontWeight: '500', fontSize: 13 }}>
-                    {profile?.username ? `@${profile.username}` : ''}
+                <Text style={{ color: 'white', fontWeight: '600', fontSize: 17, letterSpacing: -0.4 }}>
+                    {profile?.username || 'Profile'}
                 </Text>
 
                 {isMe ? (
                     <TouchableOpacity 
                         onPress={() => navigation.navigate('Settings')} 
-                        style={{ padding: 6 }}
+                        style={{ padding: 4, width: 60 }}
                     >
-                        <Ionicons name="settings-outline" size={24} color="white" />
+                        <Ionicons name="settings-outline" size={24} color={Colors.primary} style={{ alignSelf: 'flex-end' }} />
                     </TouchableOpacity>
-                ) : <View style={{ width: 36 }} />}
+                ) : <View style={{ width: 60 }} />}
             </View>
         </BlurView>
     );
 
     const renderHeader = () => (
-        <View style={{ paddingTop: insets.top + 52, zIndex: 10, paddingBottom: 10, overflow: 'visible' }}>
-            {/* ── Background & Avatar Hero ────────────────────────── */}
-            <View style={{ position: 'relative', zIndex: 10 }}>
-                {/* ── Gradient hero band ─────────────────────────────────── */}
-                <LinearGradient
-                    colors={['rgba(250,36,60,0.30)', 'transparent']}
-                    start={{ x: 0.5, y: 0 }}
-                    end={{ x: 0.5, y: 1 }}
-                    style={{ height: 130 }}
-                />
-
-                {/* Avatar — centred, overlapping gradient */}
-                <View style={{ position: 'absolute', bottom: -45, left: 0, right: 0, alignItems: 'center', zIndex: 11, elevation: 11 }}>
-                    {profile?.avatar_url ? (
-                        <View style={{ width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
-                            <Image
-                                source={{ uri: getAvatarUrl(profile.avatar_url) }}
-                                style={{ width: '100%', height: '100%' }}
-                                resizeMode="cover"
-                            />
-                        </View>
-                    ) : (
-                        <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: 'rgba(255,255,255,0.12)' }}>
-                            <Text style={{ color: 'white', fontSize: 34, fontWeight: 'bold' }}>{profile?.display_name?.[0]?.toUpperCase()}</Text>
-                        </View>
-                    )}
-                </View>
-            </View>
-
+        <View style={{ paddingTop: insets.top + 60, zIndex: 10, paddingBottom: 10 }}>
             {/* ── Identity ───────────────────────────────────────────── */}
-            <View style={{ alignItems: 'center', paddingHorizontal: 24, paddingTop: 10, paddingBottom: 8, zIndex: 1, marginTop: 45 }}>
-                <Text style={{ color: 'white', fontWeight: '700', fontSize: 24, letterSpacing: -0.5 }}>{profile?.display_name}</Text>
-                <Text style={{ color: '#6b7280', fontSize: 13, marginTop: 2 }}>@{profile?.username}</Text>
+            <View style={{ alignItems: 'center', paddingHorizontal: 24, zIndex: 1 }}>
+
+                {profile?.avatar_url ? (
+                    <Image
+                        source={{ uri: getAvatarUrl(profile.avatar_url) }}
+                        style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: '#2C2C2E', marginBottom: 16 }}
+                    />
+                ) : (
+                    <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: '#2C2C2E', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                        <Text style={{ color: 'white', fontSize: 36, fontWeight: '600' }}>{profile?.display_name?.[0]?.toUpperCase()}</Text>
+                    </View>
+                )}
+
+                <Text style={{ color: 'white', fontWeight: '700', fontSize: 28, letterSpacing: 0.35 }}>{profile?.display_name}</Text>
+                <Text style={{ color: '#8E8E93', fontSize: 15, marginTop: 4, fontWeight: '400' }}>@{profile?.username}</Text>
 
                 {profile?.bio ? (
-                    <Text style={{ color: '#9ca3af', textAlign: 'center', fontSize: 14, lineHeight: 20, marginTop: 8, maxWidth: 280 }}>{profile.bio}</Text>
+                    <Text style={{ color: '#EBEBF5', textAlign: 'center', fontSize: 15, lineHeight: 22, marginTop: 12, maxWidth: 300 }}>{profile.bio}</Text>
                 ) : null}
 
-                {/* Genre pills */}
+                {/* Genre pills - more subtle for Apple design */}
                 {profile?.favorite_genres ? (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginTop: 10 }}>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 16 }}>
                         {profile.favorite_genres.split(',').filter(Boolean).map(g => (
-                            <View key={g} style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 100, borderWidth: 1, borderColor: 'rgba(250,36,60,0.3)', backgroundColor: 'rgba(250,36,60,0.1)' }}>
-                                <Text style={{ color: Colors.primary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>{g.trim()}</Text>
+                            <View key={g} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#1C1C1E' }}>
+                                <Text style={{ color: '#EBEBF5', fontSize: 13, fontWeight: '500' }}>{g.trim()}</Text>
                             </View>
                         ))}
                     </View>
                 ) : null}
 
-                {isMe && (
-                    <TouchableOpacity
-                        onPress={() => {
-                            setEditData({
-                                display_name: profile?.display_name || '',
-                                bio: profile?.bio || '',
-                                favorite_genres: profile?.favorite_genres || '',
-                                avatar_url: profile?.avatar_url || ''
-                            });
-                            setEditMode(true);
-                        }}
-                        style={{ marginTop: 12, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 100, paddingHorizontal: 16, paddingVertical: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}
-                    >
-                        <Text style={{ color: 'white', fontSize: 12, fontWeight: '600' }}>Edit Profile</Text>
-                    </TouchableOpacity>
-                )}
+                {/* Actions Row */}
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 24, width: '100%' }}>
+                    {isMe ? (
+                        <TouchableOpacity
+                            onPress={() => {
+                                setEditData({
+                                    display_name: profile?.display_name || '',
+                                    bio: profile?.bio || '',
+                                    favorite_genres: profile?.favorite_genres || '',
+                                    avatar_url: profile?.avatar_url || ''
+                                });
+                                setEditMode(true);
+                            }}
+                            style={{ flex: 1, backgroundColor: '#2C2C2E', borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}
+                        >
+                            <Text style={{ color: 'white', fontSize: 15, fontWeight: '600' }}>Edit Profile</Text>
+                        </TouchableOpacity>
+                    ) : (
+                        <>
+                            <TouchableOpacity
+                                onPress={handleFollow}
+                                style={{ flex: 1, borderRadius: 12, paddingVertical: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: profile?.is_following ? '#2C2C2E' : Colors.primary }}
+                            >
+                                <Text style={{ color: 'white', fontWeight: '600', fontSize: 15 }}>{profile?.is_following ? 'Following' : 'Follow'}</Text>
+                            </TouchableOpacity>
+                            {tasteMatch !== null && (
+                                <View style={{ backgroundColor: 'rgba(191,90,242,0.15)', borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center' }}>
+                                    <Text style={{ color: '#BF5AF2', fontWeight: '700', fontSize: 15 }}>{tasteMatch}%</Text>
+                                    <Text style={{ color: '#BF5AF2', fontSize: 10, fontWeight: '600', marginTop: 2 }}>MATCH</Text>
+                                </View>
+                            )}
+                        </>
+                    )}
+                </View>
             </View>
 
-            {/* ── Listening Streak Badge ─────────────────────────────── */}
-            {profile && profile.current_streak > 0 && (
-                <View style={{ marginHorizontal: 20, marginTop: 14, backgroundColor: 'rgba(250,36,60,0.08)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(250,36,60,0.2)', padding: 14 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                            <Text style={{ fontSize: 28 }}>🔥</Text>
-                            <View>
-                                <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 18 }}>{profile.current_streak} day streak!</Text>
-                                <Text style={{ color: '#9ca3af', fontSize: 12, marginTop: 1 }}>Longest: {profile.longest_streak} days</Text>
-                            </View>
-                        </View>
-                        <View style={{ backgroundColor: 'rgba(250,36,60,0.15)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 }}>
-                            <Text style={{ color: Colors.primary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 }}>Keep it up!</Text>
-                        </View>
-                    </View>
-                </View>
-            )}
-
-            {/* ── Stats card ─────────────────────────────────────────── */}
-            <View style={{ marginHorizontal: 20, marginTop: 16, flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+            {/* ── Stats card (Inset Grouped Style) ────────────────────── */}
+            <View style={{ marginHorizontal: 16, marginTop: 24, flexDirection: 'row', backgroundColor: '#1C1C1E', borderRadius: 14, overflow: 'hidden' }}>
                 {[
                     { label: 'Posts', val: profile?.posts_count ?? 0, onPress: null }, 
                     { label: 'Followers', val: profile?.followers_count ?? 0, onPress: () => navigation.navigate('FollowersList', { userId: targetId, listType: 'followers', username: profile?.username }) }, 
@@ -670,69 +614,49 @@ export default function ProfileScreen({ navigation, route }: any) {
                 ].map((s, i, arr) => {
                     const Wrapper = s.onPress ? TouchableOpacity : View;
                     return (
-                        <Wrapper key={s.label} onPress={s.onPress || undefined} style={{ flex: 1, alignItems: 'center', paddingVertical: 14, borderRightWidth: i < arr.length - 1 ? 1 : 0, borderRightColor: 'rgba(255,255,255,0.07)' }}>
-                            <Text style={{ color: 'white', fontWeight: '700', fontSize: 20 }}>{s.val}</Text>
-                            <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: '500' }}>{s.label}</Text>
+                        <Wrapper key={s.label} onPress={s.onPress || undefined} style={{ flex: 1, alignItems: 'center', paddingVertical: 16, borderRightWidth: i < arr.length - 1 ? StyleSheet.hairlineWidth : 0, borderRightColor: '#38383A' }}>
+                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18 }}>{s.val}</Text>
+                            <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 4, fontWeight: '500' }}>{s.label}</Text>
                         </Wrapper>
                     );
                 })}
             </View>
 
-            {/* ── Action buttons ─────────────────────────────────────── */}
-            <View style={{ marginHorizontal: 20, marginTop: 14 }}>
-                {!isMe && (
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <TouchableOpacity
-                            onPress={handleFollow}
-                            style={{ flex: 1, borderRadius: 100, paddingVertical: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: profile?.is_following ? 'rgba(255,255,255,0.08)' : Colors.primary, borderWidth: 1, borderColor: profile?.is_following ? 'rgba(255,255,255,0.12)' : Colors.primary }}
-                        >
-                            <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>{profile?.is_following ? 'Following' : 'Follow'}</Text>
-                        </TouchableOpacity>
-                        {tasteMatch !== null && (
-                            <View style={{ backgroundColor: 'rgba(168,85,247,0.1)', borderWidth: 1, borderColor: 'rgba(168,85,247,0.3)', borderRadius: 100, paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center' }}>
-                                <Text style={{ color: '#c084fc', fontWeight: '700', fontSize: 16 }}>{tasteMatch}%</Text>
-                                <Text style={{ color: 'rgba(192,132,252,0.7)', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>Match</Text>
-                            </View>
-                        )}
-                    </View>
-                )}
-            </View>
-
             {/* ── Live Now Playing ───────────────────────────────────── */}
             {liveTrack && (
-                <View style={{ marginHorizontal: 20, marginTop: 16, backgroundColor: 'rgba(29,185,84,0.07)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(29,185,84,0.2)', padding: 14 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                        <FontAwesome5 name="spotify" size={11} color="#1DB954" />
-                        <Text style={{ color: '#1DB954', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, flex: 1 }}>Live on Spotify</Text>
-                        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#1DB954' }} />
+                <View style={{ marginHorizontal: 16, marginTop: 16, backgroundColor: '#1C1C1E', borderRadius: 14, padding: 16, overflow: 'hidden' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                        <Ionicons name="musical-notes" size={14} color="#34C759" />
+                        <Text style={{ color: '#34C759', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', flex: 1 }}>Live on Spotify</Text>
                     </View>
-                    <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
                         {liveTrack.album_art_url ? (
-                            <Image source={{ uri: liveTrack.album_art_url }} style={{ width: 56, height: 56, borderRadius: 10 }} />
+                            <Image source={{ uri: liveTrack.album_art_url }} style={{ width: 60, height: 60, borderRadius: 8, backgroundColor: '#2C2C2E' }} />
                         ) : (
-                            <View style={{ width: 56, height: 56, borderRadius: 10, backgroundColor: '#1DB954', justifyContent: 'center', alignItems: 'center' }}>
-                                <FontAwesome5 name="music" size={20} color="black" />
+                            <View style={{ width: 60, height: 60, borderRadius: 8, backgroundColor: '#34C759', justifyContent: 'center', alignItems: 'center' }}>
+                                <FontAwesome5 name="music" size={24} color="black" />
                             </View>
                         )}
                         <View style={{ flex: 1 }}>
-                            <Text style={{ color: 'white', fontWeight: '700', fontSize: 14 }} numberOfLines={1}>{liveTrack.track_title}</Text>
-                            <Text style={{ color: Colors.primary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{liveTrack.artist}</Text>
+                            <Text style={{ color: 'white', fontWeight: '600', fontSize: 16 }} numberOfLines={1}>{liveTrack.track_title}</Text>
+                            <Text style={{ color: '#8E8E93', fontSize: 14, marginTop: 2 }} numberOfLines={1}>{liveTrack.artist}</Text>
                             {liveTrack.duration_ms > 0 && (
-                                <View style={{ marginTop: 8, height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
-                                    <View style={{ height: 3, backgroundColor: '#1DB954', width: `${Math.round((liveTrack.progress_ms / liveTrack.duration_ms) * 100)}%` }} />
+                                <View style={{ marginTop: 10, height: 4, backgroundColor: '#38383A', borderRadius: 2, overflow: 'hidden' }}>
+                                    <View style={{ height: 4, backgroundColor: '#34C759', width: `${Math.round((liveTrack.progress_ms / liveTrack.duration_ms) * 100)}%` }} />
                                 </View>
                             )}
                         </View>
                     </View>
+
                     {isMe && (
                         <TouchableOpacity
                             onPress={handleShareLive}
                             disabled={sharingLive}
-                            style={{ marginTop: 12, backgroundColor: Colors.primary, borderRadius: 100, paddingVertical: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                            style={{ marginTop: 16, backgroundColor: '#2C2C2E', borderRadius: 10, paddingVertical: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
                         >
                             {sharingLive
                                 ? <ActivityIndicator color="white" size="small" />
-                                : <><Ionicons name="share-social" size={16} color="white" /><Text style={{ color: 'white', fontWeight: '700', fontSize: 13 }}>Share to Feed</Text></>}
+                                : <><Ionicons name="share-outline" size={18} color="white" /><Text style={{ color: 'white', fontWeight: '600', fontSize: 15 }}>Share to Feed</Text></>}
                         </TouchableOpacity>
                     )}
                 </View>
@@ -767,41 +691,41 @@ export default function ProfileScreen({ navigation, route }: any) {
                     {/* Spotify Data */}
                     {selectedMusicService === 'spotify' && profile?.has_spotify_linked && (
                         spotifyLoading ? (
-                            <ActivityIndicator color="#1DB954" />
+                            <ActivityIndicator color="#34C759" />
                         ) : (
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
                                 {spotifyTab === 'recent' && spotifyRecent.map((t, i) => (
-                                    <TouchableOpacity key={i} onPress={() => t.spotify_url && Linking.openURL(t.spotify_url)} style={{ width: 110 }}>
+                                    <TouchableOpacity key={i} onPress={() => t.spotify_url && Linking.openURL(t.spotify_url)} style={{ width: 120 }}>
                                         {t.album_art_url
-                                            ? <Image source={{ uri: t.album_art_url }} style={{ width: 110, height: 110, borderRadius: 14 }} />
-                                            : <View style={{ width: 110, height: 110, borderRadius: 14, backgroundColor: Colors.primary }} />}
-                                        <Text style={{ color: 'white', fontSize: 12, fontWeight: '600', marginTop: 7 }} numberOfLines={1}>{t.track_title}</Text>
-                                        <Text style={{ color: Colors.primary, fontSize: 11, marginTop: 2 }} numberOfLines={1}>{t.artist}</Text>
+                                            ? <Image source={{ uri: t.album_art_url }} style={{ width: 120, height: 120, borderRadius: 8 }} />
+                                            : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E' }} />}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{t.track_title}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 13, marginTop: 2 }} numberOfLines={1}>{t.artist}</Text>
                                     </TouchableOpacity>
                                 ))}
                                 {spotifyTab === 'artists' && spotifyArtists.map((a, i) => (
-                                    <TouchableOpacity key={i} onPress={() => a.spotify_url && Linking.openURL(a.spotify_url)} style={{ width: 90, alignItems: 'center' }}>
+                                    <TouchableOpacity key={i} onPress={() => a.spotify_url && Linking.openURL(a.spotify_url)} style={{ width: 100, alignItems: 'center' }}>
                                         {a.image_url
-                                            ? <Image source={{ uri: a.image_url }} style={{ width: 80, height: 80, borderRadius: 40 }} />
-                                            : <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#374151' }} />}
-                                        <Text style={{ color: 'white', fontSize: 12, fontWeight: '600', marginTop: 7, textAlign: 'center' }} numberOfLines={1}>{a.name}</Text>
-                                        {a.genres?.[0] && <Text style={{ color: '#6b7280', fontSize: 10, textAlign: 'center', marginTop: 1 }} numberOfLines={1}>{a.genres[0]}</Text>}
+                                            ? <Image source={{ uri: a.image_url }} style={{ width: 100, height: 100, borderRadius: 50 }} />
+                                            : <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: '#2C2C2E' }} />}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8, textAlign: 'center' }} numberOfLines={1}>{a.name}</Text>
+                                        {a.genres?.[0] && <Text style={{ color: '#8E8E93', fontSize: 12, textAlign: 'center', marginTop: 2 }} numberOfLines={1}>{a.genres[0]}</Text>}
                                     </TouchableOpacity>
                                 ))}
                                 {spotifyTab === 'playlists' && spotifyPlaylists.map((p, i) => (
-                                    <TouchableOpacity key={i} onPress={() => p.spotify_url && Linking.openURL(p.spotify_url)} style={{ width: 110 }}>
+                                    <TouchableOpacity key={i} onPress={() => p.spotify_url && Linking.openURL(p.spotify_url)} style={{ width: 120 }}>
                                         {p.image_url
-                                            ? <Image source={{ uri: p.image_url }} style={{ width: 110, height: 110, borderRadius: 14 }} />
-                                            : <View style={{ width: 110, height: 110, borderRadius: 14, backgroundColor: '#374151', justifyContent: 'center', alignItems: 'center' }}>
-                                                <FontAwesome5 name="list-ul" size={22} color="#9ca3af" /></View>}
-                                        <Text style={{ color: 'white', fontSize: 12, fontWeight: '600', marginTop: 7 }} numberOfLines={1}>{p.name}</Text>
-                                        <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 1 }} numberOfLines={1}>{p.track_count} tracks</Text>
+                                            ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} />
+                                            : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}>
+                                                <FontAwesome5 name="list-ul" size={24} color="#8E8E93" /></View>}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{p.name}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 13, marginTop: 2 }} numberOfLines={1}>{p.track_count} tracks</Text>
                                     </TouchableOpacity>
                                 ))}
                                 {((spotifyTab === 'recent' && spotifyRecent.length === 0) ||
                                     (spotifyTab === 'artists' && spotifyArtists.length === 0) ||
                                     (spotifyTab === 'playlists' && spotifyPlaylists.length === 0)) && (
-                                    <Text style={{ color: '#4b5563', fontSize: 13, paddingVertical: 12 }}>
+                                    <Text style={{ color: '#8E8E93', fontSize: 15, paddingVertical: 12, paddingHorizontal: 16 }}>
                                         {spotifyTab === 'recent' ? 'No recent tracks' : spotifyTab === 'artists' ? 'No top artists yet' : 'No playlists found'}
                                     </Text>
                                 )}
@@ -812,21 +736,21 @@ export default function ProfileScreen({ navigation, route }: any) {
                     {/* YouTube Music Data */}
                     {selectedMusicService === 'youtube' && profile?.has_youtube_linked && (
                         youtubeLoading ? (
-                            <ActivityIndicator color="#FF0000" />
+                            <ActivityIndicator color="#FF3B30" />
                         ) : (
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
                                 {youtubePlaylists.map((p, i) => (
-                                    <TouchableOpacity key={i} onPress={() => p.youtube_url && Linking.openURL(p.youtube_url)} style={{ width: 110 }}>
+                                    <TouchableOpacity key={i} onPress={() => p.youtube_url && Linking.openURL(p.youtube_url)} style={{ width: 120 }}>
                                         {p.image_url
-                                            ? <Image source={{ uri: p.image_url }} style={{ width: 110, height: 110, borderRadius: 14 }} />
-                                            : <View style={{ width: 110, height: 110, borderRadius: 14, backgroundColor: '#374151', justifyContent: 'center', alignItems: 'center' }}>
-                                                <FontAwesome5 name="youtube" size={22} color="#FF0000" /></View>}
-                                        <Text style={{ color: 'white', fontSize: 12, fontWeight: '600', marginTop: 7 }} numberOfLines={1}>{p.name}</Text>
-                                        <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 1 }} numberOfLines={1}>{p.track_count} videos</Text>
+                                            ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} />
+                                            : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}>
+                                                <FontAwesome5 name="youtube" size={24} color="#FF3B30" /></View>}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{p.name}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 13, marginTop: 2 }} numberOfLines={1}>{p.track_count} videos</Text>
                                     </TouchableOpacity>
                                 ))}
                                 {youtubePlaylists.length === 0 && (
-                                    <Text style={{ color: '#4b5563', fontSize: 13, paddingVertical: 12 }}>No playlists found</Text>
+                                    <Text style={{ color: '#8E8E93', fontSize: 15, paddingVertical: 12, paddingHorizontal: 16 }}>No playlists found</Text>
                                 )}
                             </ScrollView>
                         )
@@ -835,21 +759,21 @@ export default function ProfileScreen({ navigation, route }: any) {
                     {/* Apple Music Data */}
                     {selectedMusicService === 'apple' && profile?.has_apple_music_linked && (
                         appleLoading ? (
-                            <ActivityIndicator color="#FC3A6E" />
+                            <ActivityIndicator color="#FF2D55" />
                         ) : (
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
                                 {applePlaylists.map((p, i) => (
-                                    <TouchableOpacity key={i} onPress={() => p.apple_url && Linking.openURL(p.apple_url)} style={{ width: 110 }}>
+                                    <TouchableOpacity key={i} onPress={() => p.apple_url && Linking.openURL(p.apple_url)} style={{ width: 120 }}>
                                         {p.image_url
-                                            ? <Image source={{ uri: p.image_url }} style={{ width: 110, height: 110, borderRadius: 14 }} />
-                                            : <View style={{ width: 110, height: 110, borderRadius: 14, backgroundColor: '#374151', justifyContent: 'center', alignItems: 'center' }}>
-                                                <FontAwesome5 name="apple" size={22} color="#FC3A6E" /></View>}
-                                        <Text style={{ color: 'white', fontSize: 12, fontWeight: '600', marginTop: 7 }} numberOfLines={1}>{p.name}</Text>
-                                        <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 1 }} numberOfLines={1}>{p.track_count} tracks</Text>
+                                            ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} />
+                                            : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}>
+                                                <FontAwesome5 name="apple" size={24} color="#FF2D55" /></View>}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{p.name}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 13, marginTop: 2 }} numberOfLines={1}>{p.track_count} tracks</Text>
                                     </TouchableOpacity>
                                 ))}
                                 {applePlaylists.length === 0 && (
-                                    <Text style={{ color: '#4b5563', fontSize: 13, paddingVertical: 12 }}>No playlists found</Text>
+                                    <Text style={{ color: '#8E8E93', fontSize: 15, paddingVertical: 12, paddingHorizontal: 16 }}>No playlists found</Text>
                                 )}
                             </ScrollView>
                         )
@@ -858,18 +782,18 @@ export default function ProfileScreen({ navigation, route }: any) {
             )}
 
             {/* ── Filter tabs ────────────────────────────────────────── */}
-            <View style={{ marginTop: 24, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.07)' }}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 8 }}>
+            <View style={{ marginTop: 24, paddingBottom: 8 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
                     {FILTER_TABS.map(tab => {
                         const active = filter === tab.key;
                         return (
                             <TouchableOpacity
                                 key={tab.key}
                                 onPress={() => setFilter(tab.key)}
-                                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 100, backgroundColor: active ? Colors.primary : 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: active ? Colors.primary : 'rgba(255,255,255,0.08)' }}
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: active ? '#FFFFFF' : '#1C1C1E' }}
                             >
-                                <Ionicons name={tab.icon} size={13} color={active ? 'white' : '#6b7280'} />
-                                <Text style={{ fontSize: 13, fontWeight: active ? '600' : '400', color: active ? 'white' : '#6b7280' }}>{tab.label}</Text>
+                                <Ionicons name={tab.icon} size={15} color={active ? 'black' : '#8E8E93'} />
+                                <Text style={{ fontSize: 15, fontWeight: '600', color: active ? 'black' : '#8E8E93' }}>{tab.label}</Text>
                             </TouchableOpacity>
                         );
                     })}

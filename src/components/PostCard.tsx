@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { TouchableOpacity, View, Text, Image, Animated, Share, StyleSheet } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
-import { Post, PostType } from '../types';
+import { Post, PostType, ReactionType } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import { Colors } from '../theme';
 import { API_BASE_URL } from '../api/client';
@@ -19,6 +19,8 @@ interface Props {
     onLike: (postId: number) => void;
     onComment: (post: Post) => void;
     onAuthorPress: (userId: number) => void;
+    onQuickReact?: (postId: number, reaction: ReactionType) => void;
+    onListenLater?: (post: Post) => void;
     onDelete?: (postId: number) => void;
     isOwn?: boolean;
 }
@@ -27,6 +29,7 @@ const TYPE_CFG: Record<PostType, { label: string; icon: keyof typeof Ionicons.gl
     now_playing: { label: 'Now Playing', icon: 'radio',          color: Colors.primary },
     loved:       { label: 'Loved',       icon: 'heart',          color: Colors.primary },
     history:     { label: 'History',     icon: 'time-outline',   color: '#9ca3af' },
+    spin:        { label: 'Spinning',    icon: 'disc',           color: '#10B981' },
 };
 
 const AVATAR_COLORS = ['#3B82F6', '#EC4899', '#10B981', '#6366F1', '#F59E0B'];
@@ -47,7 +50,16 @@ const EqBar = ({ delay, peak }: { delay: number; peak: number }) => {
     return <Animated.View style={{ width: 3, height: h, backgroundColor: 'white', borderRadius: 2, opacity: 0.85 }} />;
 };
 
-export default function PostCard({ post, onLike, onComment, onAuthorPress, onDelete, isOwn }: Props) {
+export default function PostCard({
+    post,
+    onLike,
+    onComment,
+    onAuthorPress,
+    onQuickReact,
+    onListenLater,
+    onDelete,
+    isOwn,
+}: Props) {
     const [sound,     setSound]     = React.useState<Audio.Sound | null>(null);
     const [isPlaying, setIsPlaying] = React.useState(false);
 
@@ -209,8 +221,24 @@ export default function PostCard({ post, onLike, onComment, onAuthorPress, onDel
                 </TouchableOpacity>
 
                 <TouchableOpacity onPress={handleShare} style={s.actionBtn}>
-                    <Ionicons name="paperplane-outline" size={20} color="#4b5563" />
+                    <Ionicons name="paper-plane-outline" size={20} color="#4b5563" />
                 </TouchableOpacity>
+
+                {onQuickReact && (
+                    <TouchableOpacity onPress={() => onQuickReact(post.id, 'on_repeat')} style={s.actionBtn}>
+                        <Ionicons
+                            name="repeat"
+                            size={20}
+                            color={post.my_reactions?.includes('on_repeat') ? '#10B981' : '#4b5563'}
+                        />
+                    </TouchableOpacity>
+                )}
+
+                {onListenLater && (
+                    <TouchableOpacity onPress={() => onListenLater(post)} style={s.actionBtn}>
+                        <Ionicons name="time-outline" size={20} color="#4b5563" />
+                    </TouchableOpacity>
+                )}
 
                 <Text style={[s.actionCount, { marginLeft: 'auto' }]}>{timeAgo}</Text>
             </View>

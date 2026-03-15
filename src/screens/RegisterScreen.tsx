@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Alert, View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
@@ -22,14 +23,20 @@ export default function RegisterScreen({ navigation }: any) {
 
     const handleRegister = async () => {
         if (!form.username || !form.email || !form.password || !form.display_name) {
-            Alert.alert('Missing fields', 'Please fill in all required fields.');
+            Toast.show({
+                type: 'error',
+                text1: 'Missing fields',
+                text2: 'Please fill in all required fields.',
+                position: 'bottom',
+                bottomOffset: 100,
+            });
             return;
         }
         setLoading(true);
         try {
             await register({ ...form, favorite_genres: selectedGenres.join(',') });
         } catch (e: any) {
-            Alert.alert('Registration failed', e?.response?.data?.error || 'Something went wrong');
+            // Handled globally
         }
         setLoading(false);
     };

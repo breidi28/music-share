@@ -1,5 +1,16 @@
 import client from './client';
-import { PaginatedPosts, User, Comment, MusicSearchResult, CollectionItem, CollectionResponse } from '../types';
+import {
+    PaginatedPosts,
+    User,
+    Comment,
+    MusicSearchResult,
+    CollectionItem,
+    CollectionResponse,
+    NotificationPreferences,
+    ListenLaterItem,
+    ReactionType,
+    PostReactionsPayload,
+} from '../types';
 
 // Auth
 export const authApi = {
@@ -39,7 +50,14 @@ export const postsApi = {
     likePost: (postId: number) => client.post(`/posts/${postId}/like`),
     deletePost: (postId: number) => client.delete(`/posts/${postId}`),
     getComments: (postId: number) => client.get<Comment[]>(`/posts/${postId}/comments`),
-    addComment: (postId: number, text: string) => client.post(`/posts/${postId}/comments`, { text }),
+    addComment: (postId: number, text: string, parentId?: number) =>
+        client.post(`/posts/${postId}/comments`, { text, parent_id: parentId }),
+    pinComment: (postId: number, commentId: number) => client.post(`/posts/${postId}/pin-comment/${commentId}`),
+    getReactions: (postId: number) => client.get<PostReactionsPayload>(`/posts/${postId}/reactions`),
+    addReaction: (postId: number, reactionType: ReactionType) =>
+        client.post(`/posts/${postId}/reactions`, { reaction_type: reactionType }),
+    removeReaction: (postId: number, reactionType: ReactionType) =>
+        client.delete(`/posts/${postId}/reactions/${reactionType}`),
 };
 
 // Explore
@@ -104,6 +122,7 @@ export const deezerApi = {
 // Music search (iTunes)
 export const musicApi = {
     search: (q: string) => client.get<MusicSearchResult[]>(`/music/search?q=${encodeURIComponent(q)}`),
+    searchAlbums: (q: string) => client.get<MusicSearchResult[]>(`/music/search_albums?q=${encodeURIComponent(q)}`),
     searchByBarcode: (barcode: string) => client.get<any>(`/music/barcode/${barcode}`),
 };
 
@@ -112,6 +131,16 @@ export const notificationsApi = {
     getAll: () => client.get<{ notifications: any[], unread_count: number }>('/notifications'),
     markRead: (id: number) => client.put(`/notifications/${id}/read`),
     markAllRead: () => client.put('/notifications/read_all'),
+    getPreferences: () => client.get<NotificationPreferences>('/notifications/preferences'),
+    updatePreferences: (data: Partial<NotificationPreferences>) =>
+        client.put<NotificationPreferences>('/notifications/preferences', data),
+};
+
+// Listen Later
+export const listenLaterApi = {
+    getAll: () => client.get<ListenLaterItem[]>('/listen-later'),
+    add: (data: Omit<ListenLaterItem, 'id' | 'user_id' | 'added_at'>) => client.post<ListenLaterItem>('/listen-later', data),
+    remove: (itemId: number) => client.delete(`/listen-later/${itemId}`),
 };
 
 // Collection

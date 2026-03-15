@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { FlatList, ScrollView, KeyboardAvoidingView, Platform, Alert, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image, StyleSheet } from 'react-native';
+import { FlatList, ScrollView, KeyboardAvoidingView, Platform, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image, StyleSheet } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MusicSearchResult, PostType } from '../types';
@@ -47,7 +48,13 @@ export default function ShareScreen({ navigation }: any) {
 
     const submit = async () => {
         if (!selected) {
-            Alert.alert('No track selected', 'Search and select a track first!');
+            Toast.show({
+                type: 'error',
+                text1: 'No track selected',
+                text2: 'Search and select a track first!',
+                position: 'bottom',
+                bottomOffset: 100,
+            });
             return;
         }
         setPosting(true);
@@ -65,12 +72,22 @@ export default function ShareScreen({ navigation }: any) {
             setSelected(null);
             setCaption('');
             setPostType('loved');
-            Alert.alert('Posted! 🎵', 'Your track has been shared.', [
-                { text: 'View Feed', onPress: () => navigation.navigate('Feed') },
-                { text: 'OK' }
-            ]);
+            
+            // Navigate FIRST, before React applies the state changes completely, to avoid mounting errors.
+            navigation.navigate('Feed');
+            
+            // Add a small delay for Toast to ensure the new screen is mounted first
+            setTimeout(() => {
+                Toast.show({
+                    type: 'success',
+                    text1: 'Posted! 🎵',
+                    text2: 'Your track has been shared.',
+                    position: 'bottom',
+                    bottomOffset: 100,
+                });
+            }, 100);
         } catch (e: any) {
-            Alert.alert('Error', e?.response?.data?.error || 'Failed to post');
+            // Error is handled globally by api/client.ts
         }
         setPosting(false);
     };

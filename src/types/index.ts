@@ -16,12 +16,10 @@ export interface User {
   has_tidal_linked?: boolean;
   has_qobuz_linked?: boolean;
   has_deezer_linked?: boolean;
-  current_streak: number;
-  longest_streak: number;
   collection_count: number;
 }
 
-export type PostType = 'now_playing' | 'loved' | 'history';
+export type PostType = 'now_playing' | 'loved' | 'history' | 'spin';
 
 export interface Post {
   id: number;
@@ -38,6 +36,9 @@ export interface Post {
   genre: string;
   likes_count: number;
   is_liked: boolean;
+  my_reactions?: ReactionType[];
+  reaction_counts?: Record<string, number>;
+  pinned_comment_id?: number | null;
   listened_at: string;
   created_at: string;
   comments?: Comment[];
@@ -49,7 +50,35 @@ export interface Comment {
   user_id: number;
   author: User;
   text: string;
+  parent_id?: number | null;
   created_at: string;
+}
+
+export type ReactionType = 'saved' | 'on_repeat' | 'skip' | 'crate_worthy';
+
+export interface PostReactionsPayload {
+  counts: Record<string, number>;
+  my_reactions: ReactionType[];
+}
+
+export interface ListenLaterItem {
+  id: number;
+  user_id: number;
+  track_title: string;
+  artist: string;
+  album: string;
+  album_art_url: string;
+  source_service: string;
+  source_url: string;
+  added_at: string;
+}
+
+export interface NotificationPreferences {
+  notify_new_post: boolean;
+  notify_now_playing: boolean;
+  notify_collection_add: boolean;
+  notify_mentions: boolean;
+  notify_replies: boolean;
 }
 
 export interface MusicSearchResult {
@@ -85,7 +114,16 @@ export interface CollectionItem {
   created_at: string;
 }
 
+export interface CollectionStats {
+  total: number;
+  vinyl_count: number;
+  cd_count: number;
+  cassette_count: number;
+  top_artist: string | null;
+}
+
 export interface CollectionResponse {
   items: CollectionItem[];
   total: number;
+  stats?: CollectionStats;
 }

@@ -3,8 +3,9 @@ import { FlatList, RefreshControl, View, Text, TouchableOpacity, ActivityIndicat
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Post } from '../types';
-import { postsApi, notificationsApi } from '../api/endpoints';
+import Toast from 'react-native-toast-message';
+import { Post, ReactionType } from '../types';
+import { postsApi, notificationsApi, listenLaterApi } from '../api/endpoints';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
 import PostCard from '../components/PostCard';
@@ -58,6 +59,40 @@ export default function FeedScreen({ navigation }: any) {
         try {
             await postsApi.deletePost(postId);
             setPosts(prev => prev.filter(p => p.id !== postId));
+        } catch { }
+    };
+
+    const handleQuickReact = async (postId: number, reaction: ReactionType) => {
+        const target = posts.find(p => p.id === postId);
+        const hasReaction = target?.my_reactions?.includes(reaction);
+
+        try {
+            if (hasReaction) {
+                await postsApi.removeReaction(postId, reaction);
+            } else {
+                await postsApi.addReaction(postId, reaction);
+            }
+
+            const res = await postsApi.getReactions(postId);
+            setPosts(prev => prev.map(p =>
+                p.id === postId
+                    ? { ...p, my_reactions: res.data.my_reactions, reaction_counts: res.data.counts }
+                    : p
+            ));
+        } catch { }
+    };
+
+    const handleListenLater = async (post: Post) => {
+        try {
+            await listenLaterApi.add({
+                track_title: post.track_title,
+                artist: post.artist,
+                album: post.album || '',
+                album_art_url: post.album_art_url || '',
+                source_service: 'spotify',
+                source_url: post.spotify_url || '',
+            });
+            Toast.show({ type: 'success', text1: 'Saved to Listen Later' });
         } catch { }
     };
 
@@ -135,6 +170,8 @@ export default function FeedScreen({ navigation }: any) {
                         post={item}
                         onLike={handleLike}
                         onComment={handleComment}
+                        onQuickReact={handleQuickReact}
+                        onListenLater={handleListenLater}
                         onAuthorPress={uid => navigation.navigate('Profile', { userId: uid })}
                         onDelete={handleDelete}
                         isOwn={item.user_id === user?.id}
