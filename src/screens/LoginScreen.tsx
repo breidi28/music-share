@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import {
     KeyboardAvoidingView,
     Platform,
-    Alert,
     View,
     Text,
     TextInput,
@@ -11,6 +10,7 @@ import {
     ScrollView,
     Keyboard,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
@@ -26,14 +26,21 @@ export default function LoginScreen({ navigation }: any) {
     const handleLogin = async () => {
         Keyboard.dismiss();
         if (!username || !password) {
-            Alert.alert('Missing fields', 'Please fill in all fields.');
+            Toast.show({
+                type: 'error',
+                text1: 'Missing fields',
+                text2: 'Please fill in all fields.',
+                position: 'bottom',
+                bottomOffset: 100,
+            });
             return;
         }
         setLoading(true);
         try {
             await login(username.trim(), password);
         } catch (e: any) {
-            Alert.alert('Login failed', e?.response?.data?.error || 'Invalid credentials');
+            // Error is handled globally by api/client.ts, but we catch here to stop loading state
+            // If you wanted to override the global message, you could suppress there and alert here.
         }
         setLoading(false);
     };

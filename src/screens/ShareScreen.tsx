@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from 'react';
-import { FlatList, ScrollView, KeyboardAvoidingView, Platform, Alert, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image, StyleSheet } from 'react-native';
+import React, { useState, useCallback, useMemo } from 'react';
+import { FlatList, ScrollView, KeyboardAvoidingView, Platform, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image, StyleSheet } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MusicSearchResult, PostType } from '../types';
@@ -12,6 +13,19 @@ const POST_TYPE_OPTIONS: { key: PostType; label: string; icon: keyof typeof Ioni
     { key: 'history', label: 'History', icon: 'time', color: '#10B981', bgClass: 'bg-emerald-500/10', textClass: 'text-emerald-500', borderClass: 'border-emerald-500', desc: 'Something you listened to recently' },
 ];
 
+const POST_TEMPLATES: Array<{
+    key: string;
+    label: string;
+    hint: string;
+    suggestedType: PostType;
+    captionStarter: string;
+}> = [
+    { key: 'on_repeat', label: 'On Repeat', hint: 'Loop-worthy right now', suggestedType: 'now_playing', captionStarter: 'On repeat this week.' },
+    { key: 'hidden_gem', label: 'Hidden Gem', hint: 'Underrated discovery', suggestedType: 'loved', captionStarter: 'Hidden gem alert.' },
+    { key: 'vinyl_pick', label: 'Vinyl Pick', hint: 'Collection favorite spin', suggestedType: 'spin', captionStarter: 'Vinyl pick of the day.' },
+    { key: 'throwback', label: 'Throwback', hint: 'Nostalgic revisit', suggestedType: 'history', captionStarter: 'Throwback that still hits.' },
+];
+
 export default function ShareScreen({ navigation }: any) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<MusicSearchResult[]>([]);
@@ -20,7 +34,80 @@ export default function ShareScreen({ navigation }: any) {
     const [postType, setPostType] = useState<PostType>('loved');
     const [caption, setCaption] = useState('');
     const [posting, setPosting] = useState(false);
+    const [promptSeed, setPromptSeed] = useState(0);
+    const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
     const insets = useSafeAreaInsets();
+
+    const contextualPrompts = useMemo(() => {
+        const hour = new Date().getHours();
+        const timeOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'night';
+
+        const byType: Record<PostType, string[]> = {
+            now_playing: [
+                'Soundtracking this exact moment.',
+                'This one is on repeat right now.',
+                'Current mood in one track.',
+            ],
+            loved: [
+                'This track never misses for me.',
+                'Instant favorite energy.',
+                'I keep coming back to this one.',
+            ],
+            history: [
+                'Pulled this from my recent listens.',
+                'Been revisiting this gem today.',
+                'This popped up in my listening history.',
+            ],
+            spin: [
+                'Giving this another spin today.',
+                'From the collection to the speakers.',
+                'Spinning this and loving every second.',
+            ],
+        };
+
+        const byTime: Record<'morning' | 'afternoon' | 'night', string[]> = {
+            morning: [
+                'Morning soundtrack check-in.',
+                'Starting the day with this vibe.',
+            ],
+            afternoon: [
+                'Afternoon energy booster.',
+                'Midday pick-me-up track.',
+            ],
+            night: [
+                'Late-night listen that hits different.',
+                'Ending the day with this one.',
+            ],
+        };
+
+        const selectedHint = selected
+            ? [`Sharing: ${selected.track_title} by ${selected.artist}.`]
+            : ['Share your first spin today.'];
+
+        const pool = [...selectedHint, ...byType[postType], ...byTime[timeOfDay]];
+        const rotated = pool.slice(promptSeed % pool.length).concat(pool.slice(0, promptSeed % pool.length));
+        return rotated.slice(0, 4);
+    }, [postType, selected, promptSeed]);
+
+    const applyPrompt = (prompt: string) => {
+        setCaption(prev => {
+            if (!prev.trim()) return prompt;
+            return `${prev.trim()} ${prompt}`;
+        });
+    };
+
+    const applyTemplate = (templateKey: string) => {
+        const template = POST_TEMPLATES.find(t => t.key === templateKey);
+        if (!template) return;
+
+        setSelectedTemplate(templateKey);
+        setPostType(template.suggestedType);
+        setCaption(prev => {
+            if (!prev.trim()) return template.captionStarter;
+            if (prev.includes(template.captionStarter)) return prev;
+            return `${template.captionStarter} ${prev}`;
+        });
+    };
 
     const searchMusic = useCallback(async (q: string) => {
         setQuery(q);
@@ -47,7 +134,13 @@ export default function ShareScreen({ navigation }: any) {
 
     const submit = async () => {
         if (!selected) {
-            Alert.alert('No track selected', 'Search and select a track first!');
+            Toast.show({
+                type: 'error',
+                text1: 'No track selected',
+                text2: 'Search and select a track first!',
+                position: 'bottom',
+                bottomOffset: 100,
+            });
             return;
         }
         setPosting(true);
@@ -65,12 +158,22 @@ export default function ShareScreen({ navigation }: any) {
             setSelected(null);
             setCaption('');
             setPostType('loved');
-            Alert.alert('Posted! 🎵', 'Your track has been shared.', [
-                { text: 'View Feed', onPress: () => navigation.navigate('Feed') },
-                { text: 'OK' }
-            ]);
+            
+            // Navigate FIRST, before React applies the state changes completely, to avoid mounting errors.
+            navigation.navigate('Feed');
+            
+            // Add a small delay for Toast to ensure the new screen is mounted first
+            setTimeout(() => {
+                Toast.show({
+                    type: 'success',
+                    text1: 'Posted! 🎵',
+                    text2: 'Your track has been shared.',
+                    position: 'bottom',
+                    bottomOffset: 100,
+                });
+            }, 100);
         } catch (e: any) {
-            Alert.alert('Error', e?.response?.data?.error || 'Failed to post');
+            // Error is handled globally by api/client.ts
         }
         setPosting(false);
     };
@@ -210,6 +313,60 @@ export default function ShareScreen({ navigation }: any) {
                 {/* Caption */}
                 <View className="flex-col gap-2 mb-8">
                     <Text className="text-sm font-semibold text-gray-400 uppercase tracking-widest pl-1">Caption (optional)</Text>
+
+                    <View style={{ marginBottom: 4 }}>
+                        <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '600', marginBottom: 6 }}>Template mode</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
+                            {POST_TEMPLATES.map((template) => {
+                                const active = selectedTemplate === template.key;
+                                return (
+                                    <TouchableOpacity
+                                        key={template.key}
+                                        onPress={() => applyTemplate(template.key)}
+                                        style={{
+                                            borderWidth: 1,
+                                            borderColor: active ? 'rgba(250,36,60,0.45)' : 'rgba(255,255,255,0.12)',
+                                            backgroundColor: active ? 'rgba(250,36,60,0.14)' : 'rgba(255,255,255,0.06)',
+                                            borderRadius: 12,
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 8,
+                                            minWidth: 110,
+                                        }}
+                                    >
+                                        <Text style={{ color: active ? '#ffd3d8' : '#e5e7eb', fontSize: 12, fontWeight: '700' }}>{template.label}</Text>
+                                        <Text style={{ color: '#9ca3af', fontSize: 10, marginTop: 2 }} numberOfLines={1}>{template.hint}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '600' }}>Prompt ideas</Text>
+                        <TouchableOpacity onPress={() => setPromptSeed(prev => prev + 1)} style={{ paddingVertical: 4, paddingHorizontal: 8 }}>
+                            <Text style={{ color: Colors.primary, fontSize: 12, fontWeight: '700' }}>Refresh</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
+                        {contextualPrompts.map((prompt, idx) => (
+                            <TouchableOpacity
+                                key={`${idx}-${prompt}`}
+                                onPress={() => applyPrompt(prompt)}
+                                style={{
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(250,36,60,0.35)',
+                                    backgroundColor: 'rgba(250,36,60,0.12)',
+                                    borderRadius: 999,
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 8,
+                                }}
+                            >
+                                <Text style={{ color: '#ffd3d8', fontSize: 12, fontWeight: '600' }}>{prompt}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+
                     <View className="flex-row items-center border border-white/10 rounded-2xl min-h-[100px] bg-white/5 px-3">
                         <TextInput
                             className="flex-1 text-white text-base py-3 h-full justify-start items-start"

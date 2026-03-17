@@ -1,5 +1,21 @@
 import client from './client';
-import { PaginatedPosts, User, Comment, MusicSearchResult, CollectionItem, CollectionResponse } from '../types';
+import {
+    PaginatedPosts,
+    User,
+    Comment,
+    MusicSearchResult,
+    CollectionItem,
+    CollectionResponse,
+    NotificationPreferences,
+    ListenLaterItem,
+    ReactionType,
+    PostReactionsPayload,
+    CollabList,
+    CollabListTrack,
+    WeeklyRecap,
+    ArtistDiscographyProgressSummary,
+    ArtistDiscographyProgressDetail,
+} from '../types';
 
 // Auth
 export const authApi = {
@@ -14,6 +30,8 @@ export const authApi = {
 export const usersApi = {
     getUser: (userId: number) => client.get<User>(`/users/${userId}`),
     search: (q: string) => client.get<User[]>(`/users/search?q=${encodeURIComponent(q)}`),
+    mentionSearch: (q: string) =>
+        client.get<Array<{ id: number; username: string; display_name: string; avatar_url: string }>>(`/users/mention-search?q=${encodeURIComponent(q)}`),
     follow: (userId: number) => client.post(`/users/${userId}/follow`),
     getUserPosts: (userId: number, postType?: string, page = 1) =>
         client.get<PaginatedPosts>(`/users/${userId}/posts`, { params: { type: postType, page } }),
@@ -39,19 +57,37 @@ export const postsApi = {
     likePost: (postId: number) => client.post(`/posts/${postId}/like`),
     deletePost: (postId: number) => client.delete(`/posts/${postId}`),
     getComments: (postId: number) => client.get<Comment[]>(`/posts/${postId}/comments`),
-    addComment: (postId: number, text: string) => client.post(`/posts/${postId}/comments`, { text }),
+    addComment: (postId: number, text: string, parentId?: number) =>
+        client.post(`/posts/${postId}/comments`, { text, parent_id: parentId }),
+    pinComment: (postId: number, commentId: number) => client.post(`/posts/${postId}/pin-comment/${commentId}`),
+    unpinComment: (postId: number) => client.delete(`/posts/${postId}/pin-comment`),
+    getReactions: (postId: number) => client.get<PostReactionsPayload>(`/posts/${postId}/reactions`),
+    addReaction: (postId: number, reactionType: ReactionType) =>
+        client.post(`/posts/${postId}/reactions`, { reaction_type: reactionType }),
+    removeReaction: (postId: number, reactionType: ReactionType) =>
+        client.delete(`/posts/${postId}/reactions/${reactionType}`),
 };
 
 // Explore
 export const exploreApi = {
     getPosts: (page = 1, genre?: string) =>
         client.get<PaginatedPosts>('/explore', { params: { page, genre } }),
+    getRecommendations: () =>
+        client.get<{
+            because_you_liked: Array<{ reason: string; post: any }>;
+            genre_chips: string[];
+            artist_chips: string[];
+        }>('/explore/recommendations'),
 };
 
 // Spotify
 export const spotifyApi = {
     callback: (code: string, redirectUri: string) => client.post('/integrations/spotify/callback', { code, redirect_uri: redirectUri }),
-    getLive: (userId?: number) => client.get('/integrations/spotify/live', { params: { user_id: userId } }),
+    getLive: (userId?: number) =>
+        client.get('/integrations/spotify/live', {
+            params: { user_id: userId },
+            timeout: 20000,
+        }),
     getRecent: (userId?: number) => client.get('/integrations/spotify/recent', { params: { user_id: userId } }),
     getTopArtists: (userId?: number) => client.get('/integrations/spotify/top-artists', { params: { user_id: userId } }),
     getPlaylists: (userId?: number) => client.get('/integrations/spotify/playlists', { params: { user_id: userId } }),
@@ -104,6 +140,8 @@ export const deezerApi = {
 // Music search (iTunes)
 export const musicApi = {
     search: (q: string) => client.get<MusicSearchResult[]>(`/music/search?q=${encodeURIComponent(q)}`),
+    searchAlbums: (q: string, albumsOnly = false) =>
+        client.get<MusicSearchResult[]>(`/music/search_albums?q=${encodeURIComponent(q)}&albums_only=${albumsOnly ? 'true' : 'false'}`),
     searchByBarcode: (barcode: string) => client.get<any>(`/music/barcode/${barcode}`),
 };
 
@@ -112,6 +150,16 @@ export const notificationsApi = {
     getAll: () => client.get<{ notifications: any[], unread_count: number }>('/notifications'),
     markRead: (id: number) => client.put(`/notifications/${id}/read`),
     markAllRead: () => client.put('/notifications/read_all'),
+    getPreferences: () => client.get<NotificationPreferences>('/notifications/preferences'),
+    updatePreferences: (data: Partial<NotificationPreferences>) =>
+        client.put<NotificationPreferences>('/notifications/preferences', data),
+};
+
+// Listen Later
+export const listenLaterApi = {
+    getAll: () => client.get<ListenLaterItem[]>('/listen-later'),
+    add: (data: Omit<ListenLaterItem, 'id' | 'user_id' | 'added_at'>) => client.post<ListenLaterItem>('/listen-later', data),
+    remove: (itemId: number) => client.delete(`/listen-later/${itemId}`),
 };
 
 // Collection
@@ -121,9 +169,36 @@ export const collectionApi = {
     addItem: (data: Partial<CollectionItem>) => client.post<CollectionItem>('/collection', data),
     updateItem: (id: number, data: Partial<CollectionItem>) => client.put<CollectionItem>(`/collection/${id}`, data),
     removeItem: (id: number) => client.delete(`/collection/${id}`),
+    getArtistProgress: (userId?: number, limit = 12) =>
+        client.get<ArtistDiscographyProgressSummary[]>('/collection/artist-progress', {
+            params: { user_id: userId, limit },
+        }),
+    getArtistProgressDetails: (artist: string, userId?: number) =>
+        client.get<ArtistDiscographyProgressDetail>('/collection/artist-progress/details', {
+            params: { artist, user_id: userId },
+        }),
 };
 
 // Activity Feed
 export const activityApi = {
     getFeed: (page = 1) => client.get<PaginatedPosts>('/activity', { params: { page } }),
+};
+
+// Weekly Recap
+export const recapApi = {
+    getLatest: () => client.get<WeeklyRecap>('/recap/latest'),
+    getHistory: () => client.get<WeeklyRecap[]>('/recap/history'),
+};
+
+// Collaborative Lists
+export const collabListsApi = {
+    getAll: () => client.get<CollabList[]>('/collab-lists'),
+    create: (data: { name: string; description?: string; is_weekly_challenge?: boolean; starts_at?: string; ends_at?: string }) =>
+        client.post<CollabList>('/collab-lists', data),
+    invite: (listId: number, userId: number) =>
+        client.post(`/collab-lists/${listId}/invite`, { user_id: userId }),
+    addTrack: (listId: number, data: Omit<CollabListTrack, 'id' | 'list_id' | 'added_by' | 'created_at' | 'added_by_user'>) =>
+        client.post<CollabListTrack>(`/collab-lists/${listId}/tracks`, data),
+    removeTrack: (listId: number, trackId: number) =>
+        client.delete(`/collab-lists/${listId}/tracks/${trackId}`),
 };

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, FlatList, RefreshControl, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
 import PostCard from '../components/PostCard';
-import { activityApi, postsApi } from '../api/endpoints';
-import { Post } from '../types';
+import { activityApi, postsApi, listenLaterApi, collectionApi } from '../api/endpoints';
+import { Post, ReactionType } from '../types';
 import { Colors } from '../theme';
 import CommentsModal from '../components/CommentsModal';
 
@@ -50,6 +51,53 @@ export default function ActivityScreen({ navigation }: any) {
         }
     };
 
+    const handleQuickReact = async (postId: number, reaction: ReactionType) => {
+        const target = activities.find(p => p.id === postId);
+        const hasReaction = target?.my_reactions?.includes(reaction);
+
+        try {
+            if (hasReaction) {
+                await postsApi.removeReaction(postId, reaction);
+            } else {
+                await postsApi.addReaction(postId, reaction);
+            }
+
+            const res = await postsApi.getReactions(postId);
+            setActivities(prev => prev.map(p =>
+                p.id === postId
+                    ? { ...p, my_reactions: res.data.my_reactions, reaction_counts: res.data.counts }
+                    : p
+            ));
+        } catch { }
+    };
+
+    const handleListenLater = async (post: Post) => {
+        try {
+            await listenLaterApi.add({
+                track_title: post.track_title,
+                artist: post.artist,
+                album: post.album || '',
+                album_art_url: post.album_art_url || '',
+                source_service: 'spotify',
+                source_url: post.spotify_url || '',
+            });
+            Toast.show({ type: 'success', text1: 'Saved to Listen Later' });
+        } catch { }
+    };
+
+    const handleSaveToCollection = async (post: Post) => {
+        try {
+            await collectionApi.addItem({
+                media_type: 'digital',
+                album_title: post.album || post.track_title,
+                artist: post.artist,
+                album_art_url: post.album_art_url || '',
+                notes: `Saved from activity: ${post.track_title}`,
+            });
+            Toast.show({ type: 'success', text1: 'Saved to Collection' });
+        } catch { }
+    };
+
     const handleComment = (post: Post) => {
         setSelectedPost(post);
         setCommentsVisible(true);
@@ -82,6 +130,9 @@ export default function ActivityScreen({ navigation }: any) {
                         post={item}
                         onLike={handleLike}
                         onComment={handleComment}
+                        onSaveToCollection={handleSaveToCollection}
+                        onQuickReact={handleQuickReact}
+                        onListenLater={handleListenLater}
                         onAuthorPress={(uid) => navigation.navigate('Profile', { userId: uid })}
                         isOwn={false}
                     />

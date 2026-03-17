@@ -19,6 +19,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, Switch, Platform, ActivityIndicator } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -27,7 +28,9 @@ import { ResponseType } from 'expo-auth-session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
-import { spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, usersApi } from '../api/endpoints';
+import { HIG } from '../theme/hig';
+import { UtilityScreen } from '../theme/utilityScreen';
+import { spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, usersApi, notificationsApi } from '../api/endpoints';
 import { User } from '../types';
 
 // Complete auth session when returning from OAuth browser
@@ -116,14 +119,14 @@ export default function SettingsScreen({ navigation }: any) {
     const [loadingServices, setLoadingServices] = useState(false);
     
     /**
-     * Notification preferences (local state)
-     * TODO: Persist to backend when API endpoint is available
+     * Notification preferences synced with backend
      */
     const [notifications, setNotifications] = useState({
-        likes: true,          // Notify when someone likes your post
-        comments: true,       // Notify when someone comments on your post
-        follows: true,        // Notify when someone follows you
-        newPosts: true,       // Notify when friends post new music
+        notify_new_post: true,
+        notify_now_playing: false,
+        notify_collection_add: false,
+        notify_mentions: true,
+        notify_replies: true,
     });
     
     /**
@@ -259,36 +262,32 @@ export default function SettingsScreen({ navigation }: any) {
     }, [deezerResponse]);
 
     /**
-     * Load notification settings from AsyncStorage
-     * Ensures settings persist across app sessions
+     * Load notification settings from backend
      */
     useEffect(() => {
         const loadNotifications = async () => {
             try {
-                const stored = await AsyncStorage.getItem('notificationSettings');
-                if (stored) {
-                    setNotifications(JSON.parse(stored));
-                }
+                const res = await notificationsApi.getPreferences();
+                setNotifications(res.data);
             } catch (error) {
-                console.error('Failed to load notification settings:', error);
+                console.error('Failed to load notification settings from backend:', error);
             }
         };
         loadNotifications();
     }, []);
 
-    /**
-     * Save notification settings to AsyncStorage whenever they change
-     */
-    useEffect(() => {
-        const saveNotifications = async () => {
-            try {
-                await AsyncStorage.setItem('notificationSettings', JSON.stringify(notifications));
-            } catch (error) {
-                console.error('Failed to save notification settings:', error);
-            }
-        };
-        saveNotifications();
-    }, [notifications]);
+    const updateNotificationPref = async (key: keyof typeof notifications, value: boolean) => {
+        const previous = notifications;
+        const next = { ...notifications, [key]: value };
+        setNotifications(next);
+
+        try {
+            await notificationsApi.updatePreferences({ [key]: value });
+        } catch (error) {
+            setNotifications(previous);
+            Toast.show({ type: 'error', text1: 'Failed to update notifications' });
+        }
+    };
 
     /**
      * Load privacy settings from AsyncStorage
@@ -336,9 +335,9 @@ export default function SettingsScreen({ navigation }: any) {
         try {
             const res = await spotifyApi.callback(code, SPOTIFY_REDIRECT_URI);
             setProfile(res.data.user);
-            Alert.alert('Success', 'Spotify account connected!');
+            Toast.show({ type: 'success', text1: 'Spotify Connected!' });
         } catch (error: any) {
-            Alert.alert('Error', error.response?.data?.error || 'Failed to connect Spotify');
+            Toast.show({ type: 'error', text1: 'Error', text2: error.response?.data?.error || 'Failed to connect Spotify' });
         } finally {
             setLoadingServices(false);
         }
@@ -354,9 +353,9 @@ export default function SettingsScreen({ navigation }: any) {
         try {
             const res = await youtubeApi.callback(code, YOUTUBE_REDIRECT_URI);
             setProfile(res.data.user);
-            Alert.alert('Success', 'YouTube Music account connected!');
+            Toast.show({ type: 'success', text1: 'YouTube Music Connected!' });
         } catch (error: any) {
-            Alert.alert('Error', error.response?.data?.error || 'Failed to connect YouTube Music');
+            Toast.show({ type: 'error', text1: 'Error', text2: error.response?.data?.error || 'Failed to connect YouTube Music' });
         } finally {
             setLoadingServices(false);
         }
@@ -372,9 +371,9 @@ export default function SettingsScreen({ navigation }: any) {
         try {
             const res = await deezerApi.callback(code);
             setProfile(res.data.user);
-            Alert.alert('Success', 'Deezer account connected!');
+            Toast.show({ type: 'success', text1: 'Deezer Connected!' });
         } catch (error: any) {
-            Alert.alert('Error', error.response?.data?.error || 'Failed to connect Deezer');
+            Toast.show({ type: 'error', text1: 'Error', text2: error.response?.data?.error || 'Failed to connect Deezer' });
         } finally {
             setLoadingServices(false);
         }
@@ -392,8 +391,8 @@ export default function SettingsScreen({ navigation }: any) {
                     try {
                         const res = await spotifyApi.disconnect();
                         setProfile(res.data.user);
-                        Alert.alert('Success', 'Spotify disconnected');
-                    } catch { Alert.alert('Error', 'Could not disconnect Spotify'); }
+                        Toast.show({ type: 'success', text1: 'Success', text2: 'Spotify disconnected' });
+                    } catch {}
                 }
             }
         ]);
@@ -411,8 +410,8 @@ export default function SettingsScreen({ navigation }: any) {
                     try {
                         const res = await youtubeApi.disconnect();
                         setProfile(res.data.user);
-                        Alert.alert('Success', 'YouTube Music disconnected');
-                    } catch { Alert.alert('Error', 'Could not disconnect YouTube Music'); }
+                        Toast.show({ type: 'success', text1: 'Success', text2: 'YouTube Music disconnected' });
+                    } catch {}
                 }
             }
         ]);
@@ -430,8 +429,8 @@ export default function SettingsScreen({ navigation }: any) {
                     try {
                         const res = await appleMusicApi.disconnect();
                         setProfile(res.data.user);
-                        Alert.alert('Success', 'Apple Music disconnected');
-                    } catch { Alert.alert('Error', 'Could not disconnect Apple Music'); }
+                        Toast.show({ type: 'success', text1: 'Success', text2: 'Apple Music disconnected' });
+                    } catch {}
                 }
             }
         ]);
@@ -449,8 +448,8 @@ export default function SettingsScreen({ navigation }: any) {
                     try {
                         const res = await tidalApi.disconnect();
                         setProfile(res.data.user);
-                        Alert.alert('Success', 'Tidal disconnected');
-                    } catch { Alert.alert('Error', 'Could not disconnect Tidal'); }
+                        Toast.show({ type: 'success', text1: 'Success', text2: 'Tidal disconnected' });
+                    } catch {}
                 }
             }
         ]);
@@ -468,8 +467,8 @@ export default function SettingsScreen({ navigation }: any) {
                     try {
                         const res = await qobuzApi.disconnect();
                         setProfile(res.data.user);
-                        Alert.alert('Success', 'Qobuz disconnected');
-                    } catch { Alert.alert('Error', 'Could not disconnect Qobuz'); }
+                        Toast.show({ type: 'success', text1: 'Success', text2: 'Qobuz disconnected' });
+                    } catch {}
                 }
             }
         ]);
@@ -487,8 +486,8 @@ export default function SettingsScreen({ navigation }: any) {
                     try {
                         const res = await deezerApi.disconnect();
                         setProfile(res.data.user);
-                        Alert.alert('Success', 'Deezer disconnected');
-                    } catch { Alert.alert('Error', 'Could not disconnect Deezer'); }
+                        Toast.show({ type: 'success', text1: 'Success', text2: 'Deezer disconnected' });
+                    } catch {}
                 }
             }
         ]);
@@ -537,7 +536,7 @@ export default function SettingsScreen({ navigation }: any) {
                     style: 'destructive',
                     onPress: () => {
                         // TODO: Implement account deletion API call
-                        Alert.alert('Not Implemented', 'Account deletion will be available soon');
+                        Toast.show({ type: 'info', text1: 'Not Implemented', text2: 'Account deletion will be available soon' });
                     },
                 },
             ]
@@ -557,7 +556,7 @@ export default function SettingsScreen({ navigation }: any) {
     const SettingSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
         <View style={{ marginBottom: 32 }}>
             <Text style={{ 
-                color: '#6b7280', 
+                color: HIG.secondaryText,
                 fontSize: 13, 
                 fontWeight: '600', 
                 textTransform: 'uppercase', 
@@ -567,7 +566,7 @@ export default function SettingsScreen({ navigation }: any) {
             }}>
                 {title}
             </Text>
-            <View style={{ backgroundColor: '#1c1c1e', borderRadius: 12, marginHorizontal: 16 }}>
+            <View style={{ backgroundColor: HIG.groupedCard, borderRadius: HIG.sectionCornerRadius, marginHorizontal: 16 }}>
                 {children}
             </View>
         </View>
@@ -606,8 +605,9 @@ export default function SettingsScreen({ navigation }: any) {
             alignItems: 'center' as const,
             paddingVertical: 14,
             paddingHorizontal: 16,
-            borderBottomWidth: isLast ? 0 : 0.5,
-            borderBottomColor: 'rgba(255,255,255,0.1)',
+            minHeight: HIG.rowMinHeight,
+            borderBottomWidth: isLast ? 0 : HIG.separatorThickness,
+            borderBottomColor: HIG.separator,
         };
 
         const content = (
@@ -644,7 +644,7 @@ export default function SettingsScreen({ navigation }: any) {
         }
 
         return (
-            <TouchableOpacity onPress={onPress} style={rowStyle}>
+            <TouchableOpacity onPress={onPress} style={rowStyle} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
                 {content}
             </TouchableOpacity>
         );
@@ -680,48 +680,72 @@ export default function SettingsScreen({ navigation }: any) {
                 alignItems: 'center',
                 paddingVertical: 14,
                 paddingHorizontal: 16,
-                borderBottomWidth: isLast ? 0 : 0.5,
-                borderBottomColor: 'rgba(255,255,255,0.1)',
+                minHeight: HIG.rowMinHeight,
+                borderBottomWidth: isLast ? 0 : HIG.separatorThickness,
+                borderBottomColor: HIG.separator,
             }}
         >
-            <FontAwesome5 name={icon} size={20} color={connected ? color : '#6b7280'} />
-            <Text style={{ 
-                color: connected ? 'white' : '#9ca3af', 
-                fontSize: 16, 
-                marginLeft: 12, 
-                flex: 1,
-            }}>
-                {label}
-            </Text>
+            <View
+                style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: connected ? `${color}1F` : 'rgba(255,255,255,0.06)',
+                    borderWidth: 1,
+                    borderColor: connected ? `${color}55` : 'rgba(255,255,255,0.08)',
+                }}
+            >
+                <FontAwesome5 name={icon} size={16} color={connected ? color : '#9ca3af'} />
+            </View>
+
+            <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                    {label}
+                </Text>
+                <Text style={{ color: connected ? '#86efac' : '#6b7280', fontSize: 12, marginTop: 2 }}>
+                    {connected ? 'Connected' : 'Not connected'}
+                </Text>
+            </View>
+
             {loading ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
             ) : connected ? (
                 <TouchableOpacity 
                     onPress={onDisconnect}
                     style={{ 
-                        backgroundColor: 'rgba(239,68,68,0.1)', 
-                        borderRadius: 20, 
-                        paddingHorizontal: 12, 
-                        paddingVertical: 6,
+                        backgroundColor: 'rgba(255,255,255,0.06)', 
+                        borderRadius: 12, 
+                        paddingHorizontal: 14, 
+                        paddingVertical: 8,
                         borderWidth: 1,
-                        borderColor: 'rgba(239,68,68,0.3)',
+                        borderColor: 'rgba(255,255,255,0.12)',
+                        minHeight: HIG.touchTargetMin,
+                        minWidth: 108,
+                        justifyContent: 'center',
+                        alignItems: 'center',
                     }}
                 >
-                    <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '600' }}>Disconnect</Text>
+                    <Text style={{ color: '#fca5a5', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 }}>Disconnect</Text>
                 </TouchableOpacity>
             ) : (
                 <TouchableOpacity 
                     onPress={onConnect}
                     style={{ 
-                        backgroundColor: `${color}15`, 
-                        borderRadius: 20, 
-                        paddingHorizontal: 12, 
-                        paddingVertical: 6,
+                        backgroundColor: 'rgba(255,255,255,0.06)', 
+                        borderRadius: 12, 
+                        paddingHorizontal: 14, 
+                        paddingVertical: 8,
                         borderWidth: 1,
-                        borderColor: `${color}40`,
+                        borderColor: 'rgba(255,255,255,0.12)',
+                        minHeight: HIG.touchTargetMin,
+                        minWidth: 108,
+                        justifyContent: 'center',
+                        alignItems: 'center',
                     }}
                 >
-                    <Text style={{ color: color, fontSize: 13, fontWeight: '600' }}>Connect</Text>
+                    <Text style={{ color: Colors.primary, fontSize: 13, fontWeight: '700', letterSpacing: 0.2 }}>Connect</Text>
                 </TouchableOpacity>
             )}
         </View>
@@ -739,22 +763,27 @@ export default function SettingsScreen({ navigation }: any) {
             <View
                 style={{
                     paddingTop: insets.top,
-                    backgroundColor: '#000',
-                    borderBottomWidth: 0.5,
-                    borderBottomColor: 'rgba(255,255,255,0.1)',
+                    backgroundColor: UtilityScreen.header.backgroundColor,
+                    borderBottomWidth: UtilityScreen.header.borderBottomWidth,
+                    borderBottomColor: UtilityScreen.header.borderBottomColor,
                 }}
             >
-                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 16 }}>
-                        <Ionicons name="chevron-back" size={28} color="white" />
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: UtilityScreen.header.horizontalPadding, paddingVertical: UtilityScreen.header.verticalPadding }}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: UtilityScreen.header.backButtonMarginRight, minWidth: HIG.touchTargetMin, minHeight: HIG.touchTargetMin, justifyContent: 'center' }}>
+                        <Ionicons name="chevron-back" size={UtilityScreen.header.backIconSize} color="white" />
                     </TouchableOpacity>
-                    <Text style={{ fontSize: 34, fontWeight: '700', color: 'white', letterSpacing: -0.5, flex: 1 }}>
+                    <Text style={{ fontSize: UtilityScreen.header.titleSize, fontWeight: UtilityScreen.header.titleWeight, color: 'white', letterSpacing: UtilityScreen.header.titleLetterSpacing, flex: 1 }}>
                         Settings
                     </Text>
                 </View>
             </View>
 
-            <ScrollView contentContainerStyle={{ paddingVertical: 24, paddingBottom: 100 }}>
+            <ScrollView
+                contentContainerStyle={{
+                    paddingTop: UtilityScreen.content.topPadding,
+                    paddingBottom: UtilityScreen.content.bottomPadding,
+                }}
+            >
                 {/* ═══════════════════════════════════════════════════════════
                     Account Section - Profile and user info
                     ═══════════════════════════════════════════════════════════ */}
@@ -762,7 +791,7 @@ export default function SettingsScreen({ navigation }: any) {
                     <SettingRow
                         icon="person-outline"
                         label="Edit Profile"
-                        onPress={() => navigation.navigate('Profile')}
+                        onPress={() => navigation.navigate('EditProfile')}
                     />
                     <SettingRow
                         icon="at-outline"
@@ -806,7 +835,7 @@ export default function SettingsScreen({ navigation }: any) {
                         icon="apple"
                         label="Apple Music"
                         connected={profile?.has_apple_music_linked}
-                        onConnect={() => Alert.alert('Apple Music', 'Apple Music integration requires MusicKit setup. Coming soon!')}
+                        onConnect={() => Toast.show({ type: 'info', text1: 'Apple Music', text2: 'Integration coming soon!' })}
                         onDisconnect={handleDisconnectAppleMusic}
                         color="#FC3A6E"
                         loading={loadingServices}
@@ -815,7 +844,7 @@ export default function SettingsScreen({ navigation }: any) {
                         icon="music"
                         label="Tidal"
                         connected={profile?.has_tidal_linked}
-                        onConnect={() => Alert.alert('Tidal', 'To connect Tidal, add API credentials to the backend .env file.')}
+                        onConnect={() => Toast.show({ type: 'info', text1: 'Tidal', text2: 'Backend API credentials needed.' })}
                         onDisconnect={handleDisconnectTidal}
                         color="#00B0FF"
                         loading={loadingServices}
@@ -824,7 +853,7 @@ export default function SettingsScreen({ navigation }: any) {
                         icon="compact-disc"
                         label="Qobuz"
                         connected={profile?.has_qobuz_linked}
-                        onConnect={() => Alert.alert('Qobuz', 'To connect Qobuz, add API credentials to the backend .env file.')}
+                        onConnect={() => Toast.show({ type: 'info', text1: 'Qobuz', text2: 'Backend API credentials needed.' })}
                         onDisconnect={handleDisconnectQobuz}
                         color="#f87171"
                         loading={loadingServices}
@@ -835,7 +864,7 @@ export default function SettingsScreen({ navigation }: any) {
                         connected={profile?.has_deezer_linked}
                         onConnect={() => {
                             if (!DEEZER_APP_ID) {
-                                Alert.alert('Deezer', 'To connect Deezer, add API credentials to the backend .env file and frontend DEEZER_APP_ID.');
+                                Toast.show({ type: 'info', text1: 'Deezer', text2: 'Credentials configuration needed.' });
                             } else {
                                 deezerPromptAsync();
                             }
@@ -849,36 +878,43 @@ export default function SettingsScreen({ navigation }: any) {
 
                 {/* ═══════════════════════════════════════════════════════════
                     Notifications Section - Manage push notification preferences
-                    Note: Settings are currently local only (not persisted to backend)
+                    Synced with backend notification preference settings
                     ═══════════════════════════════════════════════════════════ */}
                 <SettingSection title="Notifications">
                     <SettingRow
-                        icon="heart-outline"
-                        label="Likes"
+                        icon="document-text-outline"
+                        label="New Posts"
                         isSwitch
-                        switchValue={notifications.likes}
-                        onSwitchChange={(v: boolean) => setNotifications({ ...notifications, likes: v })}
-                    />
-                    <SettingRow
-                        icon="chatbubble-outline"
-                        label="Comments"
-                        isSwitch
-                        switchValue={notifications.comments}
-                        onSwitchChange={(v: boolean) => setNotifications({ ...notifications, comments: v })}
-                    />
-                    <SettingRow
-                        icon="person-add-outline"
-                        label="New Followers"
-                        isSwitch
-                        switchValue={notifications.follows}
-                        onSwitchChange={(v: boolean) => setNotifications({ ...notifications, follows: v })}
+                        switchValue={notifications.notify_new_post}
+                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_new_post', v)}
                     />
                     <SettingRow
                         icon="musical-notes-outline"
-                        label="New Posts from Friends"
+                        label="Now Playing"
                         isSwitch
-                        switchValue={notifications.newPosts}
-                        onSwitchChange={(v: boolean) => setNotifications({ ...notifications, newPosts: v })}
+                        switchValue={notifications.notify_now_playing}
+                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_now_playing', v)}
+                    />
+                    <SettingRow
+                        icon="albums-outline"
+                        label="Collection Adds"
+                        isSwitch
+                        switchValue={notifications.notify_collection_add}
+                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_collection_add', v)}
+                    />
+                    <SettingRow
+                        icon="at-outline"
+                        label="Mentions"
+                        isSwitch
+                        switchValue={notifications.notify_mentions}
+                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_mentions', v)}
+                    />
+                    <SettingRow
+                        icon="chatbubble-outline"
+                        label="Replies"
+                        isSwitch
+                        switchValue={notifications.notify_replies}
+                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_replies', v)}
                         isLast
                     />
                 </SettingSection>
@@ -919,7 +955,17 @@ export default function SettingsScreen({ navigation }: any) {
                     <SettingRow
                         icon="information-circle-outline"
                         label="About music share"
-                        onPress={() => Alert.alert('music share', 'Version 1.0.0\n\nA social music sharing platform.')}
+                        onPress={() => Toast.show({ type: 'info', text1: 'Music Share', text2: 'Version 1.0.0 - A social music sharing platform.' })}
+                    />
+                    <SettingRow
+                        icon="sparkles-outline"
+                        label="Changelog"
+                        onPress={() => navigation.navigate('Changelog')}
+                    />
+                    <SettingRow
+                        icon="stats-chart-outline"
+                        label="Weekly Recap"
+                        onPress={() => navigation.navigate('WeeklyRecap')}
                     />
                     <SettingRow
                         icon="document-text-outline"

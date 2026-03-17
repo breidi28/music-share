@@ -4,8 +4,13 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import IntegrityError
 import os
 import re
+import json
+import time
+import threading
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -14,7 +19,8 @@ load_dotenv()
 app = Flask(__name__)
 
 # CORS Configuration – restrict to allowed origins
-ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:8081').split(',')
+_default_origins = 'http://localhost:8081,http://localhost:19006,http://127.0.0.1:8081,http://127.0.0.1:19006'
+ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('CORS_ORIGINS', _default_origins).split(',') if origin.strip()]
 CORS(app, origins=ALLOWED_ORIGINS, methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], supports_credentials=True)
 
 # Config – use absolute path so DB location is stable regardless of cwd
@@ -65,6 +71,7 @@ MAX_CAPTION_LEN = 500
 MAX_COMMENT_LEN = 500
 MAX_URL_LEN = 500
 MIN_PASSWORD_LEN = 8
+VALID_REACTION_TYPES = {'saved', 'on_repeat', 'skip', 'crate_worthy'}
 
 def validate_email(email: str) -> bool:
     """Basic email validation."""
@@ -115,10 +122,6 @@ class User(db.Model):
     avatar_url = db.Column(db.String(500), default='')
     favorite_genres = db.Column(db.String(500), default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-
-    # Listening streaks
-    current_streak = db.Column(db.Integer, default=0)
-    longest_streak = db.Column(db.Integer, default=0)
     last_post_date = db.Column(db.Date, nullable=True)
 
     # Spotify OAuth
@@ -175,15 +178,13 @@ class User(db.Model):
             'followers_count': self.followers_list.count(),
             'following_count': self.followed.count(),
             'posts_count': len(self.posts),
-            'created_at': self.created_at.isoformat(),
+            'created_at': (self.created_at.isoformat() + 'Z' if self.created_at.tzinfo is None else self.created_at.isoformat()),
             'has_spotify_linked': bool(self.spotify_access_token),
             'has_youtube_linked': bool(self.youtube_access_token),
             'has_apple_music_linked': bool(self.apple_music_user_token),
             'has_tidal_linked': bool(self.tidal_access_token),
             'has_qobuz_linked': bool(self.qobuz_user_auth_token),
             'has_deezer_linked': bool(self.deezer_access_token),
-            'current_streak': self.current_streak,
-            'longest_streak': self.longest_streak,
             'collection_count': len(self.collection_items) if hasattr(self, 'collection_items') else 0,
         }
         if current_user_id:
@@ -209,6 +210,7 @@ class Post(db.Model):
     genre = db.Column(db.String(100), default='')
     listened_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    pinned_comment_id = db.Column(db.Integer, db.ForeignKey('comment.id'), nullable=True)
 
     liked_by = db.relationship('User', secondary=track_likes, backref='liked_posts', lazy='dynamic')
 
@@ -227,13 +229,23 @@ class Post(db.Model):
             'spotify_url': self.spotify_url,
             'genre': self.genre,
             'likes_count': self.liked_by.count(),
-            'listened_at': self.listened_at.isoformat(),
-            'created_at': self.created_at.isoformat(),
+            'listened_at': (self.listened_at.isoformat() + 'Z' if self.listened_at.tzinfo is None else self.listened_at.isoformat()),
+            'created_at': (self.created_at.isoformat() + 'Z' if self.created_at.tzinfo is None else self.created_at.isoformat()),
+            'pinned_comment_id': self.pinned_comment_id,
         }
         if current_user_id:
             data['is_liked'] = self.liked_by.filter(track_likes.c.user_id == current_user_id).count() > 0
+            my_reactions = PostReaction.query.filter_by(post_id=self.id, user_id=current_user_id).all()
+            data['my_reactions'] = [r.reaction_type for r in my_reactions]
         else:
             data['is_liked'] = False
+            data['my_reactions'] = []
+
+        counts = db.session.query(
+            PostReaction.reaction_type,
+            db.func.count(PostReaction.id)
+        ).filter_by(post_id=self.id).group_by(PostReaction.reaction_type).all()
+        data['reaction_counts'] = {r_type: int(count) for r_type, count in counts}
         return data
 
 
@@ -242,10 +254,16 @@ class Comment(db.Model):
     post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     text = db.Column(db.String(500), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('comment.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    post = db.relationship('Post', backref=db.backref('comments', lazy=True, cascade='all, delete-orphan'))
+    post = db.relationship(
+        'Post',
+        foreign_keys=[post_id],
+        backref=db.backref('comments', lazy=True, cascade='all, delete-orphan', foreign_keys='Comment.post_id')
+    )
     author = db.relationship('User', backref='comments')
+    parent = db.relationship('Comment', remote_side=[id], backref='replies')
 
     def to_dict(self):
         return {
@@ -254,7 +272,8 @@ class Comment(db.Model):
             'user_id': self.user_id,
             'author': self.author.to_dict(),
             'text': self.text,
-            'created_at': self.created_at.isoformat()
+            'parent_id': self.parent_id,
+            'created_at': (self.created_at.isoformat() + 'Z' if self.created_at.tzinfo is None else self.created_at.isoformat()),
         }
 
 
@@ -283,8 +302,246 @@ class Notification(db.Model):
             'actor': self.actor.to_dict(),
             'post_id': self.post_id,
             'is_read': self.is_read,
-            'created_at': self.created_at.isoformat(),
+            'created_at': (self.created_at.isoformat() + 'Z' if self.created_at.tzinfo is None else self.created_at.isoformat()),
         }
+
+
+class PostReaction(db.Model):
+    __tablename__ = 'post_reactions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    reaction_type = db.Column(db.String(30), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint('post_id', 'user_id', 'reaction_type', name='uq_post_user_reaction'),
+    )
+
+
+class ListenLaterItem(db.Model):
+    __tablename__ = 'listen_later_items'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    track_title = db.Column(db.String(200), nullable=False)
+    artist = db.Column(db.String(200), nullable=False)
+    album = db.Column(db.String(200), default='')
+    album_art_url = db.Column(db.String(500), default='')
+    source_service = db.Column(db.String(50), default='')
+    source_url = db.Column(db.String(500), default='')
+    added_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    owner = db.relationship('User', backref=db.backref('listen_later_items', lazy=True, cascade='all, delete-orphan'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'track_title': self.track_title,
+            'artist': self.artist,
+            'album': self.album,
+            'album_art_url': self.album_art_url,
+            'source_service': self.source_service,
+            'source_url': self.source_url,
+            'added_at': (self.added_at.isoformat() + 'Z' if self.added_at.tzinfo is None else self.added_at.isoformat()),
+        }
+
+
+class CollabList(db.Model):
+    __tablename__ = 'collab_lists'
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.String(500), default='')
+    is_weekly_challenge = db.Column(db.Boolean, default=False, nullable=False)
+    starts_at = db.Column(db.DateTime, nullable=True)
+    ends_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    owner = db.relationship('User', backref=db.backref('owned_collab_lists', lazy=True))
+
+    def to_dict(self, current_user_id: int | None = None, include_tracks: bool = False):
+        tracks_query = CollabListTrack.query.filter_by(list_id=self.id)
+        tracks = tracks_query.order_by(CollabListTrack.created_at.desc()).all() if include_tracks else []
+
+        member_count = CollabListMember.query.filter_by(list_id=self.id).count()
+        role = None
+        if current_user_id is not None:
+            if self.owner_id == current_user_id:
+                role = 'owner'
+            else:
+                membership = CollabListMember.query.filter_by(list_id=self.id, user_id=current_user_id).first()
+                role = membership.role if membership else None
+
+        return {
+            'id': self.id,
+            'owner_id': self.owner_id,
+            'name': self.name,
+            'description': self.description,
+            'is_weekly_challenge': bool(self.is_weekly_challenge),
+            'starts_at': (self.starts_at.isoformat() + 'Z' if self.starts_at and self.starts_at.tzinfo is None else self.starts_at.isoformat()) if self.starts_at else None,
+            'ends_at': (self.ends_at.isoformat() + 'Z' if self.ends_at and self.ends_at.tzinfo is None else self.ends_at.isoformat()) if self.ends_at else None,
+            'created_at': (self.created_at.isoformat() + 'Z' if self.created_at.tzinfo is None else self.created_at.isoformat()),
+            'owner': self.owner.to_dict(current_user_id=current_user_id),
+            'member_count': member_count,
+            'track_count': tracks_query.count(),
+            'my_role': role,
+            'tracks': [t.to_dict() for t in tracks],
+        }
+
+
+class CollabListMember(db.Model):
+    __tablename__ = 'collab_list_members'
+
+    list_id = db.Column(db.Integer, db.ForeignKey('collab_lists.id'), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    role = db.Column(db.String(20), default='member', nullable=False)
+
+    collab_list = db.relationship('CollabList', backref=db.backref('memberships', lazy=True, cascade='all, delete-orphan'))
+    user = db.relationship('User', backref=db.backref('collab_list_memberships', lazy=True))
+
+
+class CollabListTrack(db.Model):
+    __tablename__ = 'collab_list_tracks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    list_id = db.Column(db.Integer, db.ForeignKey('collab_lists.id'), nullable=False, index=True)
+    added_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    track_title = db.Column(db.String(200), nullable=False)
+    artist = db.Column(db.String(200), nullable=False)
+    album = db.Column(db.String(200), default='')
+    album_art_url = db.Column(db.String(500), default='')
+    source_service = db.Column(db.String(50), default='')
+    source_url = db.Column(db.String(500), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    collab_list = db.relationship('CollabList', backref=db.backref('tracks', lazy=True, cascade='all, delete-orphan'))
+    added_by_user = db.relationship('User')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'list_id': self.list_id,
+            'added_by': self.added_by,
+            'track_title': self.track_title,
+            'artist': self.artist,
+            'album': self.album,
+            'album_art_url': self.album_art_url,
+            'source_service': self.source_service,
+            'source_url': self.source_url,
+            'created_at': (self.created_at.isoformat() + 'Z' if self.created_at.tzinfo is None else self.created_at.isoformat()),
+            'added_by_user': self.added_by_user.to_dict() if self.added_by_user else None,
+        }
+
+
+class WeeklyRecap(db.Model):
+    __tablename__ = 'weekly_recaps'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    week_start = db.Column(db.Date, nullable=False, index=True)
+    summary_json = db.Column(db.Text, nullable=False)
+    image_url = db.Column(db.String(500), default='')
+    generated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    user = db.relationship('User', backref=db.backref('weekly_recaps', lazy=True, cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'week_start', name='uq_weekly_recap_user_week'),
+    )
+
+    def to_dict(self):
+        try:
+            summary = json.loads(self.summary_json or '{}')
+        except Exception:
+            summary = {}
+
+        normalized_summary = {
+            'top_artist': summary.get('top_artist'),
+            'top_genre': summary.get('top_genre'),
+            'posts_shared': int(summary.get('posts_shared', 0) or 0),
+            'now_playing_posts': int(summary.get('now_playing_posts', 0) or 0),
+            'collection_adds': int(summary.get('collection_adds', 0) or 0),
+            'total_scrobbles': int(summary.get('total_scrobbles', summary.get('posts_shared', 0)) or 0),
+            'unique_artists': int(summary.get('unique_artists', 0) or 0),
+            'unique_tracks': int(summary.get('unique_tracks', 0) or 0),
+            'unique_albums': int(summary.get('unique_albums', 0) or 0),
+            'active_days': int(summary.get('active_days', 0) or 0),
+            'busiest_day': summary.get('busiest_day'),
+            'top_artists': summary.get('top_artists') if isinstance(summary.get('top_artists'), list) else [],
+            'top_tracks': summary.get('top_tracks') if isinstance(summary.get('top_tracks'), list) else [],
+            'top_albums': summary.get('top_albums') if isinstance(summary.get('top_albums'), list) else [],
+        }
+
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'week_start': self.week_start.isoformat() if self.week_start else None,
+            'summary': normalized_summary,
+            'image_url': self.image_url,
+            'generated_at': (self.generated_at.isoformat() + 'Z' if self.generated_at.tzinfo is None else self.generated_at.isoformat()),
+        }
+
+
+class NotificationPreference(db.Model):
+    __tablename__ = 'notification_preferences'
+
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    notify_new_post = db.Column(db.Boolean, default=True, nullable=False)
+    notify_now_playing = db.Column(db.Boolean, default=False, nullable=False)
+    notify_collection_add = db.Column(db.Boolean, default=False, nullable=False)
+    notify_mentions = db.Column(db.Boolean, default=True, nullable=False)
+    notify_replies = db.Column(db.Boolean, default=True, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('notification_preferences', uselist=False))
+
+    def to_dict(self):
+        return {
+            'notify_new_post': bool(self.notify_new_post),
+            'notify_now_playing': bool(self.notify_now_playing),
+            'notify_collection_add': bool(self.notify_collection_add),
+            'notify_mentions': bool(self.notify_mentions),
+            'notify_replies': bool(self.notify_replies),
+        }
+
+
+def _get_or_create_notification_preferences(user_id: int) -> NotificationPreference:
+    prefs = NotificationPreference.query.filter_by(user_id=user_id).first()
+    if not prefs:
+        prefs = NotificationPreference(user_id=user_id)
+        db.session.add(prefs)
+        db.session.commit()
+    return prefs
+
+
+def _ensure_phase0_schema() -> None:
+    """Best-effort schema compatibility for existing deployments without migrations."""
+    db.create_all()
+    inspector = inspect(db.engine)
+
+    if 'post' in inspector.get_table_names():
+        post_cols = {c['name'] for c in inspector.get_columns('post')}
+        if 'pinned_comment_id' not in post_cols:
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE post ADD COLUMN pinned_comment_id INTEGER'))
+                conn.commit()
+
+    if 'comment' in inspector.get_table_names():
+        comment_cols = {c['name'] for c in inspector.get_columns('comment')}
+        if 'parent_id' not in comment_cols:
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE comment ADD COLUMN parent_id INTEGER'))
+                conn.commit()
+
+
+with app.app_context():
+    try:
+        _ensure_phase0_schema()
+    except Exception as e:
+        app.logger.warning(f'Phase 0 schema ensure skipped: {str(e)}')
 
 
 class CollectionItem(db.Model):
@@ -316,7 +573,7 @@ class CollectionItem(db.Model):
             'notes': self.notes,
             'condition': self.condition,
             'purchase_date': self.purchase_date.isoformat() if self.purchase_date else None,
-            'created_at': self.created_at.isoformat(),
+            'created_at': (self.created_at.isoformat() + 'Z' if self.created_at.tzinfo is None else self.created_at.isoformat()),
         }
 
 
@@ -324,6 +581,14 @@ def _notify(recipient_id: int, actor_id: int, notif_type: str, post_id=None):
     """Create a notification, skipping self-notifications and duplicates."""
     if recipient_id == actor_id:
         return
+
+    prefs = NotificationPreference.query.filter_by(user_id=recipient_id).first()
+    if prefs:
+        if notif_type == 'mention' and not prefs.notify_mentions:
+            return
+        if notif_type == 'comment' and not prefs.notify_replies:
+            return
+
     # Deduplicate: one like/follow notification per actor+recipient+type
     if notif_type in ('like', 'follow'):
         exists = Notification.query.filter_by(
@@ -338,33 +603,172 @@ def _notify(recipient_id: int, actor_id: int, notif_type: str, post_id=None):
     # No commit here — caller commits
 
 
-def _update_streak(user: User) -> None:
-    """Update user's posting streak. Call after creating a post."""
-    today = datetime.now(timezone.utc).date()
-    
-    if user.last_post_date is None:
-        # First post ever
-        user.current_streak = 1
-        user.longest_streak = 1
-        user.last_post_date = today
-    elif user.last_post_date == today:
-        # Already posted today, no change
-        return
-    elif user.last_post_date == today - timedelta(days=1):
-        # Posted yesterday, continue streak
-        user.current_streak += 1
-        if user.current_streak > user.longest_streak:
-            user.longest_streak = user.current_streak
-        user.last_post_date = today
+def _week_start_utc(dt: datetime | None = None) -> datetime.date:
+    now = dt or datetime.now(timezone.utc)
+    monday = now - timedelta(days=now.weekday())
+    return monday.date()
+
+
+def _build_weekly_recap_summary(user_id: int, week_start: datetime.date) -> dict:
+    week_start_dt = datetime.combine(week_start, datetime.min.time(), tzinfo=timezone.utc)
+    week_end_dt = week_start_dt + timedelta(days=7)
+
+    posts = Post.query.filter(
+        Post.user_id == user_id,
+        Post.created_at >= week_start_dt,
+        Post.created_at < week_end_dt,
+    ).all()
+
+    top_artist = None
+    top_genre = None
+    post_count = len(posts)
+    now_playing_count = 0
+    collection_add_count = CollectionItem.query.filter(
+        CollectionItem.user_id == user_id,
+        CollectionItem.created_at >= week_start_dt,
+        CollectionItem.created_at < week_end_dt,
+    ).count()
+
+    if posts:
+        artists: dict[str, int] = {}
+        genres: dict[str, int] = {}
+        tracks: dict[str, dict] = {}
+        albums: dict[str, dict] = {}
+        active_days: set[str] = set()
+        day_counts: dict[str, int] = {}
+
+        for p in posts:
+            if p.artist:
+                artists[p.artist] = artists.get(p.artist, 0) + 1
+            if p.genre:
+                genres[p.genre] = genres.get(p.genre, 0) + 1
+            if p.post_type == 'now_playing':
+                now_playing_count += 1
+
+            track_key = f"{(p.track_title or '').strip().lower()}::{(p.artist or '').strip().lower()}"
+            if track_key not in tracks:
+                tracks[track_key] = {
+                    'title': p.track_title,
+                    'artist': p.artist,
+                    'plays': 0,
+                    'album_art_url': p.album_art_url or '',
+                }
+            tracks[track_key]['plays'] += 1
+
+            if p.album:
+                album_key = f"{p.album.strip().lower()}::{(p.artist or '').strip().lower()}"
+                if album_key not in albums:
+                    albums[album_key] = {
+                        'name': p.album,
+                        'artist': p.artist,
+                        'plays': 0,
+                        'album_art_url': p.album_art_url or '',
+                    }
+                albums[album_key]['plays'] += 1
+
+            created_date = p.created_at.date().isoformat() if p.created_at else None
+            if created_date:
+                active_days.add(created_date)
+                day_counts[created_date] = day_counts.get(created_date, 0) + 1
+
+        if artists:
+            top_artist = max(artists.items(), key=lambda x: x[1])[0]
+        if genres:
+            top_genre = max(genres.items(), key=lambda x: x[1])[0]
+
+        top_artists = [
+            {'name': name, 'plays': plays}
+            for name, plays in sorted(artists.items(), key=lambda x: x[1], reverse=True)[:5]
+        ]
+
+        top_tracks = sorted(
+            tracks.values(),
+            key=lambda x: x['plays'],
+            reverse=True,
+        )[:5]
+
+        top_albums = sorted(
+            albums.values(),
+            key=lambda x: x['plays'],
+            reverse=True,
+        )[:5]
+
+        busiest_day = None
+        if day_counts:
+            busiest_date_str = max(day_counts.items(), key=lambda x: x[1])[0]
+            try:
+                busiest_day = datetime.strptime(busiest_date_str, '%Y-%m-%d').strftime('%A')
+            except Exception:
+                busiest_day = busiest_date_str
+
+        unique_artists = len(artists)
+        unique_tracks = len(tracks)
+        unique_albums = len(albums)
+        active_days_count = len(active_days)
     else:
-        # Streak broken, start over
-        user.current_streak = 1
-        user.last_post_date = today
+        top_artists = []
+        top_tracks = []
+        top_albums = []
+        busiest_day = None
+        unique_artists = 0
+        unique_tracks = 0
+        unique_albums = 0
+        active_days_count = 0
+
+    return {
+        'top_artist': top_artist,
+        'top_genre': top_genre,
+        'posts_shared': post_count,
+        'now_playing_posts': now_playing_count,
+        'collection_adds': collection_add_count,
+        'total_scrobbles': post_count,
+        'unique_artists': unique_artists,
+        'unique_tracks': unique_tracks,
+        'unique_albums': unique_albums,
+        'active_days': active_days_count,
+        'busiest_day': busiest_day,
+        'top_artists': top_artists,
+        'top_tracks': top_tracks,
+        'top_albums': top_albums,
+    }
 
 
-# ─── Auth Routes ───────────────────────────────────────────────────────────────
+def _get_or_generate_weekly_recap(user_id: int, week_start: datetime.date) -> WeeklyRecap:
+    existing = WeeklyRecap.query.filter_by(user_id=user_id, week_start=week_start).first()
+    if existing:
+        try:
+            existing_summary = json.loads(existing.summary_json or '{}')
+        except Exception:
+            existing_summary = {}
 
-@app.route('/api/auth/register', methods=['POST'])
+        # Backfill older recap rows so clients immediately get Last.fm-style fields.
+        if not isinstance(existing_summary.get('top_tracks'), list):
+            refreshed_summary = _build_weekly_recap_summary(user_id=user_id, week_start=week_start)
+            existing.summary_json = json.dumps(refreshed_summary)
+            db.session.commit()
+        return existing
+
+    summary = _build_weekly_recap_summary(user_id=user_id, week_start=week_start)
+    recap = WeeklyRecap(
+        user_id=user_id,
+        week_start=week_start,
+        summary_json=json.dumps(summary),
+        image_url='',
+    )
+    db.session.add(recap)
+    try:
+        db.session.commit()
+        return recap
+    except IntegrityError:
+        # Another request created the same recap row in the meantime.
+        db.session.rollback()
+        existing_after_race = WeeklyRecap.query.filter_by(user_id=user_id, week_start=week_start).first()
+        if existing_after_race:
+            return existing_after_race
+        raise
+
+
+
 def register():
     try:
         data = request.get_json()
@@ -492,6 +896,85 @@ DEEZER_REDIRECT_URI = os.getenv('DEEZER_REDIRECT_URI', 'exp://localhost:8081')
 
 APPLE_MUSIC_PRIVATE_KEY = os.getenv('APPLE_MUSIC_PRIVATE_KEY', '')
 
+# Spotify live endpoint cache settings (short-lived, stale-while-revalidate).
+SPOTIFY_LIVE_CACHE_TTL_SECONDS = int(os.getenv('SPOTIFY_LIVE_CACHE_TTL_SECONDS', '12'))
+SPOTIFY_LIVE_CACHE_STALE_SECONDS = int(os.getenv('SPOTIFY_LIVE_CACHE_STALE_SECONDS', '45'))
+_spotify_live_cache = {}
+_spotify_live_cache_lock = threading.Lock()
+_spotify_live_refreshing = set()
+
+
+def _spotify_live_cache_get(user_id: int):
+    with _spotify_live_cache_lock:
+        entry = _spotify_live_cache.get(user_id)
+
+    if not entry:
+        return None, None
+
+    age = time.time() - entry['fetched_at']
+    if age <= SPOTIFY_LIVE_CACHE_TTL_SECONDS:
+        return entry['data'], 'fresh'
+    if age <= (SPOTIFY_LIVE_CACHE_TTL_SECONDS + SPOTIFY_LIVE_CACHE_STALE_SECONDS):
+        return entry['data'], 'stale'
+    return None, None
+
+
+def _spotify_live_cache_set(user_id: int, data: dict):
+    with _spotify_live_cache_lock:
+        _spotify_live_cache[user_id] = {
+            'data': data,
+            'fetched_at': time.time(),
+        }
+
+
+def _spotify_live_cache_delete(user_id: int):
+    with _spotify_live_cache_lock:
+        _spotify_live_cache.pop(user_id, None)
+
+
+def _build_spotify_live_payload(data: dict | None) -> dict:
+    if not data or not data.get('item'):
+        return {'is_playing': False}
+
+    item = data['item']
+    return {
+        'is_playing': data.get('is_playing', False),
+        'track_title': item.get('name', ''),
+        'artist': ', '.join([a.get('name', '') for a in item.get('artists', [])]),
+        'album': item.get('album', {}).get('name', ''),
+        'album_art_url': item.get('album', {}).get('images', [{}])[0].get('url', ''),
+        'preview_url': item.get('preview_url', ''),
+        'spotify_url': item.get('external_urls', {}).get('spotify', ''),
+        'progress_ms': data.get('progress_ms', 0),
+        'duration_ms': item.get('duration_ms', 0),
+    }
+
+
+def _refresh_spotify_live_cache_async(user_id: int):
+    with _spotify_live_cache_lock:
+        if user_id in _spotify_live_refreshing:
+            return
+        _spotify_live_refreshing.add(user_id)
+
+    def _worker():
+        try:
+            with app.app_context():
+                user = db.session.get(User, user_id)
+                if not user or not user.spotify_access_token:
+                    return
+                data, err = _spotify_get(user, 'me/player/currently-playing')
+                if err:
+                    return
+                payload = _build_spotify_live_payload(data)
+                _spotify_live_cache_set(user_id, payload)
+        except Exception:
+            pass
+        finally:
+            with _spotify_live_cache_lock:
+                _spotify_live_refreshing.discard(user_id)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
 @app.route('/api/integrations/spotify/callback', methods=['POST'])
 @jwt_required()
 def spotify_callback():
@@ -567,70 +1050,25 @@ def get_spotify_live():
     
     if not user.spotify_access_token:
         return jsonify({'is_playing': False, 'message': 'Spotify not linked'})
-        
-    # Check if token needs refresh
-    if user.spotify_token_expires_at and datetime.utcnow() > user.spotify_token_expires_at:
-        # Need to refresh token
-        auth_str = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
-        b64_auth_str = base64.b64encode(auth_str.encode()).decode()
-        
-        try:
-            res = requests.post(
-                'https://accounts.spotify.com/api/token',
-                data={
-                    'grant_type': 'refresh_token',
-                    'refresh_token': user.spotify_refresh_token
-                },
-                headers={
-                    'Authorization': f'Basic {b64_auth_str}',
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            )
-            refresh_info = res.json()
-            if 'access_token' in refresh_info:
-                user.spotify_access_token = refresh_info['access_token']
-                if 'refresh_token' in refresh_info:
-                    user.spotify_refresh_token = refresh_info['refresh_token']
-                user.spotify_token_expires_at = datetime.utcnow() + timedelta(seconds=refresh_info.get('expires_in', 3600))
-                db.session.commit()
-            else:
-                return jsonify({'is_playing': False, 'error': 'Failed to refresh token'})
-        except:
-            return jsonify({'is_playing': False, 'error': 'Exception during refresh'})
 
-    # Fetch currently playing
-    try:
-        response = requests.get(
-            'https://api.spotify.com/v1/me/player/currently-playing',
-            headers={'Authorization': f"Bearer {user.spotify_access_token}"}
-        )
-        
-        if response.status_code == 204:
-            return jsonify({'is_playing': False, 'message': 'Nothing currently playing'})
-            
-        data = response.json()
-        if not data or not data.get('item'):
-            return jsonify({'is_playing': False})
-            
-        item = data['item']
-        
-        # Only return basic safe metadata so frontend can render it
-        track_data = {
-            'is_playing': data.get('is_playing', False),
-            'track_title': item.get('name', ''),
-            'artist': ', '.join([a.get('name', '') for a in item.get('artists', [])]),
-            'album': item.get('album', {}).get('name', ''),
-            'album_art_url': item.get('album', {}).get('images', [{}])[0].get('url', ''),
-            'preview_url': item.get('preview_url', ''),
-            'spotify_url': item.get('external_urls', {}).get('spotify', ''),
-            'progress_ms': data.get('progress_ms', 0),
-            'duration_ms': item.get('duration_ms', 0)
-        }
-        
-        return jsonify(track_data)
-        
-    except Exception as e:
-        return jsonify({'is_playing': False, 'error': str(e)})
+    cached, cache_state = _spotify_live_cache_get(user.id)
+    if cached and cache_state == 'fresh':
+        return jsonify(cached)
+
+    if cached and cache_state == 'stale':
+        _refresh_spotify_live_cache_async(user.id)
+        return jsonify(cached)
+
+    data, err = _spotify_get(user, 'me/player/currently-playing')
+    if err:
+        # If we have stale data from earlier, serve it on transient upstream failures.
+        if cached:
+            return jsonify(cached)
+        return jsonify({'is_playing': False, 'error': err})
+
+    track_data = _build_spotify_live_payload(data)
+    _spotify_live_cache_set(user.id, track_data)
+    return jsonify(track_data)
 
 
 def _spotify_get(user, endpoint: str):
@@ -753,11 +1191,9 @@ def spotify_playlists():
 
     data, err = _spotify_get(user, 'me/playlists?limit=20')
     if err:
-        app.logger.error(f'[Spotify Playlists] Error for user {user_id}: {err}')
         return jsonify({'error': err}), 400
 
     items = data.get('items', []) if data else []
-    app.logger.info(f'[Spotify Playlists] Found {len(items)} playlists for user {user_id}')
     
     playlists = []
     for p in items:
@@ -781,6 +1217,7 @@ def spotify_disconnect():
     user.spotify_access_token = ''
     user.spotify_refresh_token = ''
     user.spotify_token_expires_at = None
+    _spotify_live_cache_delete(user_id)
     db.session.commit()
     return jsonify({'message': 'Spotify disconnected', 'user': user.to_dict(current_user_id=user_id)})
 
@@ -1633,6 +2070,30 @@ def search_users():
     return jsonify([u.to_dict(current_user_id=current_user_id) for u in users])
 
 
+@app.route('/api/users/mention-search', methods=['GET'])
+@jwt_required()
+def mention_search_users():
+    current_user_id = int(get_jwt_identity())
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify([])
+
+    users = User.query.filter(
+        User.id != current_user_id,
+        User.username.ilike(f'{q}%')
+    ).order_by(User.username.asc()).limit(8).all()
+
+    return jsonify([
+        {
+            'id': u.id,
+            'username': u.username,
+            'display_name': u.display_name,
+            'avatar_url': u.avatar_url,
+        }
+        for u in users
+    ])
+
+
 @app.route('/api/users/<int:user_id>/follow', methods=['POST'])
 @jwt_required()
 def follow_user(user_id):
@@ -1815,12 +2276,7 @@ def create_post():
             listened_at=datetime.now(timezone.utc)
         )
         db.session.add(post)
-        
-        # Update user's listening streak
-        user = db.session.get(User, current_user_id)
-        if user:
-            _update_streak(user)
-        
+
         db.session.commit()
         return jsonify(post.to_dict(current_user_id=current_user_id)), 201
 
@@ -1891,10 +2347,31 @@ def post_comments(post_id):
         if not text:
             return jsonify({'error': 'Comment text is required'}), 400
 
-        comment = Comment(post_id=post_id, user_id=current_user_id, text=text)
+        parent_id = data.get('parent_id')
+        if parent_id is not None:
+            try:
+                parent_id = int(parent_id)
+            except (TypeError, ValueError):
+                return jsonify({'error': 'parent_id must be a valid integer'}), 400
+
+            parent_comment = Comment.query.filter_by(id=parent_id, post_id=post_id).first()
+            if not parent_comment:
+                return jsonify({'error': 'Parent comment not found'}), 404
+
+        comment = Comment(post_id=post_id, user_id=current_user_id, text=text, parent_id=parent_id)
         db.session.add(comment)
         
         _notify(recipient_id=post.user_id, actor_id=current_user_id, notif_type='comment', post_id=post.id)
+
+        if parent_id is not None and parent_comment.user_id != current_user_id:
+            _notify(recipient_id=parent_comment.user_id, actor_id=current_user_id, notif_type='comment', post_id=post.id)
+
+        # Notify mentioned users using @username syntax.
+        mentioned_usernames = set(re.findall(r'@([A-Za-z0-9_]{2,50})', text))
+        for uname in mentioned_usernames:
+            mentioned_user = User.query.filter(db.func.lower(User.username) == uname.lower()).first()
+            if mentioned_user:
+                _notify(recipient_id=mentioned_user.id, actor_id=current_user_id, notif_type='mention', post_id=post.id)
         
         db.session.commit()
         return jsonify(comment.to_dict()), 201
@@ -1903,6 +2380,323 @@ def post_comments(post_id):
         app.logger.error(f'Comment error: {str(e)}')
         db.session.rollback()
         return jsonify({'error': 'Failed to process comment'}), 500
+
+
+@app.route('/api/posts/<int:post_id>/pin-comment/<int:comment_id>', methods=['POST'])
+@jwt_required()
+def pin_comment(post_id, comment_id):
+    current_user_id = int(get_jwt_identity())
+    post = db.get_or_404(Post, post_id)
+
+    if post.user_id != current_user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    comment = Comment.query.filter_by(id=comment_id, post_id=post_id).first()
+    if not comment:
+        return jsonify({'error': 'Comment not found for this post'}), 404
+
+    post.pinned_comment_id = comment_id
+    db.session.commit()
+    return jsonify({'message': 'Pinned comment updated', 'pinned_comment_id': comment_id}), 200
+
+
+@app.route('/api/posts/<int:post_id>/pin-comment', methods=['DELETE'])
+@jwt_required()
+def unpin_comment(post_id):
+    current_user_id = int(get_jwt_identity())
+    post = db.get_or_404(Post, post_id)
+
+    if post.user_id != current_user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    post.pinned_comment_id = None
+    db.session.commit()
+    return jsonify({'message': 'Pinned comment cleared', 'pinned_comment_id': None}), 200
+
+
+@app.route('/api/posts/<int:post_id>/reactions', methods=['GET', 'POST'])
+@jwt_required()
+def post_reactions(post_id):
+    current_user_id = int(get_jwt_identity())
+    post = db.get_or_404(Post, post_id)
+
+    if request.method == 'GET':
+        counts = db.session.query(
+            PostReaction.reaction_type,
+            db.func.count(PostReaction.id)
+        ).filter_by(post_id=post.id).group_by(PostReaction.reaction_type).all()
+
+        mine = PostReaction.query.filter_by(post_id=post.id, user_id=current_user_id).all()
+        return jsonify({
+            'counts': {r_type: int(count) for r_type, count in counts},
+            'my_reactions': [r.reaction_type for r in mine]
+        })
+
+    data = request.get_json() or {}
+    reaction_type = (data.get('reaction_type') or '').strip().lower()
+    if reaction_type not in VALID_REACTION_TYPES:
+        return jsonify({'error': f'Invalid reaction_type. Allowed: {sorted(VALID_REACTION_TYPES)}'}), 400
+
+    exists = PostReaction.query.filter_by(
+        post_id=post.id,
+        user_id=current_user_id,
+        reaction_type=reaction_type
+    ).first()
+    if exists:
+        return jsonify({'message': 'Reaction already exists'}), 200
+
+    db.session.add(PostReaction(post_id=post.id, user_id=current_user_id, reaction_type=reaction_type))
+    db.session.commit()
+    return jsonify({'message': 'Reaction added', 'reaction_type': reaction_type}), 201
+
+
+@app.route('/api/posts/<int:post_id>/reactions/<string:reaction_type>', methods=['DELETE'])
+@jwt_required()
+def delete_post_reaction(post_id, reaction_type):
+    current_user_id = int(get_jwt_identity())
+    db.get_or_404(Post, post_id)
+
+    reaction_type = (reaction_type or '').strip().lower()
+    if reaction_type not in VALID_REACTION_TYPES:
+        return jsonify({'error': f'Invalid reaction_type. Allowed: {sorted(VALID_REACTION_TYPES)}'}), 400
+
+    reaction = PostReaction.query.filter_by(
+        post_id=post_id,
+        user_id=current_user_id,
+        reaction_type=reaction_type
+    ).first()
+    if not reaction:
+        return jsonify({'error': 'Reaction not found'}), 404
+
+    db.session.delete(reaction)
+    db.session.commit()
+    return jsonify({'message': 'Reaction removed'}), 200
+
+
+@app.route('/api/listen-later', methods=['GET', 'POST'])
+@jwt_required()
+def listen_later():
+    current_user_id = int(get_jwt_identity())
+
+    if request.method == 'GET':
+        items = ListenLaterItem.query.filter_by(user_id=current_user_id).order_by(ListenLaterItem.added_at.desc()).all()
+        return jsonify([item.to_dict() for item in items]), 200
+
+    data = request.get_json() or {}
+    track_title = sanitize_string(data.get('track_title', ''), 200)
+    artist = sanitize_string(data.get('artist', ''), 200)
+    if not track_title or not artist:
+        return jsonify({'error': 'track_title and artist are required'}), 400
+
+    source_url = sanitize_string(data.get('source_url', ''), MAX_URL_LEN)
+    album_art_url = sanitize_string(data.get('album_art_url', ''), MAX_URL_LEN)
+    if source_url and not validate_url(source_url):
+        return jsonify({'error': 'Invalid source_url'}), 400
+    if album_art_url and not validate_url(album_art_url):
+        return jsonify({'error': 'Invalid album_art_url'}), 400
+
+    item = ListenLaterItem(
+        user_id=current_user_id,
+        track_title=track_title,
+        artist=artist,
+        album=sanitize_string(data.get('album', ''), 200),
+        album_art_url=album_art_url,
+        source_service=sanitize_string(data.get('source_service', ''), 50),
+        source_url=source_url,
+    )
+    db.session.add(item)
+    db.session.commit()
+    return jsonify(item.to_dict()), 201
+
+
+@app.route('/api/listen-later/<int:item_id>', methods=['DELETE'])
+@jwt_required()
+def delete_listen_later(item_id):
+    current_user_id = int(get_jwt_identity())
+    item = ListenLaterItem.query.filter_by(id=item_id, user_id=current_user_id).first()
+    if not item:
+        return jsonify({'error': 'Item not found'}), 404
+
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({'message': 'Item removed'}), 200
+
+
+def _is_collab_list_member(list_id: int, user_id: int) -> bool:
+    return CollabListMember.query.filter_by(list_id=list_id, user_id=user_id).first() is not None
+
+
+@app.route('/api/collab-lists', methods=['GET', 'POST'])
+@jwt_required()
+def collab_lists():
+    current_user_id = int(get_jwt_identity())
+
+    if request.method == 'GET':
+        lists = CollabList.query.outerjoin(
+            CollabListMember, CollabList.id == CollabListMember.list_id
+        ).filter(
+            (CollabList.owner_id == current_user_id) | (CollabListMember.user_id == current_user_id)
+        ).distinct().order_by(CollabList.created_at.desc()).all()
+
+        return jsonify([l.to_dict(current_user_id=current_user_id, include_tracks=True) for l in lists]), 200
+
+    data = request.get_json() or {}
+    name = sanitize_string(data.get('name', ''), 120)
+    description = sanitize_string(data.get('description', ''), 500)
+    if not name:
+        return jsonify({'error': 'name is required'}), 400
+
+    starts_at = None
+    ends_at = None
+    if data.get('starts_at'):
+        try:
+            starts_at = datetime.fromisoformat(str(data['starts_at']).replace('Z', '+00:00'))
+        except Exception:
+            return jsonify({'error': 'Invalid starts_at format'}), 400
+    if data.get('ends_at'):
+        try:
+            ends_at = datetime.fromisoformat(str(data['ends_at']).replace('Z', '+00:00'))
+        except Exception:
+            return jsonify({'error': 'Invalid ends_at format'}), 400
+
+    collab_list = CollabList(
+        owner_id=current_user_id,
+        name=name,
+        description=description,
+        is_weekly_challenge=bool(data.get('is_weekly_challenge', False)),
+        starts_at=starts_at,
+        ends_at=ends_at,
+    )
+    db.session.add(collab_list)
+    db.session.flush()
+
+    db.session.add(CollabListMember(list_id=collab_list.id, user_id=current_user_id, role='owner'))
+    db.session.commit()
+    return jsonify(collab_list.to_dict(current_user_id=current_user_id, include_tracks=True)), 201
+
+
+@app.route('/api/collab-lists/<int:list_id>/invite', methods=['POST'])
+@jwt_required()
+def invite_to_collab_list(list_id):
+    current_user_id = int(get_jwt_identity())
+    collab_list = db.get_or_404(CollabList, list_id)
+
+    if collab_list.owner_id != current_user_id:
+        return jsonify({'error': 'Only list owner can invite members'}), 403
+
+    data = request.get_json() or {}
+    invited_user_id = data.get('user_id')
+    try:
+        invited_user_id = int(invited_user_id)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'user_id is required and must be an integer'}), 400
+
+    invited_user = User.query.filter_by(id=invited_user_id).first()
+    if not invited_user:
+        return jsonify({'error': 'User not found'}), 404
+
+    existing = CollabListMember.query.filter_by(list_id=list_id, user_id=invited_user_id).first()
+    if existing:
+        return jsonify({'message': 'User already a member'}), 200
+
+    db.session.add(CollabListMember(list_id=list_id, user_id=invited_user_id, role='member'))
+    db.session.commit()
+    return jsonify({'message': 'Member invited'}), 201
+
+
+@app.route('/api/collab-lists/<int:list_id>/tracks', methods=['POST'])
+@jwt_required()
+def add_collab_list_track(list_id):
+    current_user_id = int(get_jwt_identity())
+    collab_list = db.get_or_404(CollabList, list_id)
+
+    if collab_list.owner_id != current_user_id and not _is_collab_list_member(list_id, current_user_id):
+        return jsonify({'error': 'Not a member of this list'}), 403
+
+    data = request.get_json() or {}
+    track_title = sanitize_string(data.get('track_title', ''), 200)
+    artist = sanitize_string(data.get('artist', ''), 200)
+    if not track_title or not artist:
+        return jsonify({'error': 'track_title and artist are required'}), 400
+
+    album_art_url = sanitize_string(data.get('album_art_url', ''), MAX_URL_LEN)
+    source_url = sanitize_string(data.get('source_url', ''), MAX_URL_LEN)
+    if album_art_url and not validate_url(album_art_url):
+        return jsonify({'error': 'Invalid album_art_url'}), 400
+    if source_url and not validate_url(source_url):
+        return jsonify({'error': 'Invalid source_url'}), 400
+
+    track = CollabListTrack(
+        list_id=list_id,
+        added_by=current_user_id,
+        track_title=track_title,
+        artist=artist,
+        album=sanitize_string(data.get('album', ''), 200),
+        album_art_url=album_art_url,
+        source_service=sanitize_string(data.get('source_service', ''), 50),
+        source_url=source_url,
+    )
+    db.session.add(track)
+    db.session.commit()
+    return jsonify(track.to_dict()), 201
+
+
+@app.route('/api/collab-lists/<int:list_id>/tracks/<int:track_id>', methods=['DELETE'])
+@jwt_required()
+def delete_collab_list_track(list_id, track_id):
+    current_user_id = int(get_jwt_identity())
+    collab_list = db.get_or_404(CollabList, list_id)
+    track = CollabListTrack.query.filter_by(id=track_id, list_id=list_id).first()
+    if not track:
+        return jsonify({'error': 'Track not found'}), 404
+
+    if current_user_id not in (collab_list.owner_id, track.added_by):
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    db.session.delete(track)
+    db.session.commit()
+    return jsonify({'message': 'Track removed'}), 200
+
+
+@app.route('/api/recap/latest', methods=['GET'], strict_slashes=False)
+@app.route('/api/recaps/latest', methods=['GET'], strict_slashes=False)
+@jwt_required()
+def recap_latest():
+    current_user_id = int(get_jwt_identity())
+    week_start = _week_start_utc()
+    recap = _get_or_generate_weekly_recap(user_id=current_user_id, week_start=week_start)
+    return jsonify(recap.to_dict()), 200
+
+
+@app.route('/api/recap/history', methods=['GET'], strict_slashes=False)
+@app.route('/api/recaps/history', methods=['GET'], strict_slashes=False)
+@jwt_required()
+def recap_history():
+    current_user_id = int(get_jwt_identity())
+    recaps = WeeklyRecap.query.filter_by(user_id=current_user_id).order_by(WeeklyRecap.week_start.desc()).limit(12).all()
+
+    if not recaps:
+        recaps = [_get_or_generate_weekly_recap(user_id=current_user_id, week_start=_week_start_utc())]
+
+    return jsonify([r.to_dict() for r in recaps]), 200
+
+
+@app.route('/api/notifications/preferences', methods=['GET', 'PUT'])
+@jwt_required()
+def notification_preferences():
+    current_user_id = int(get_jwt_identity())
+    prefs = _get_or_create_notification_preferences(current_user_id)
+
+    if request.method == 'GET':
+        return jsonify(prefs.to_dict()), 200
+
+    data = request.get_json() or {}
+    for key in ('notify_new_post', 'notify_now_playing', 'notify_collection_add', 'notify_mentions', 'notify_replies'):
+        if key in data:
+            setattr(prefs, key, bool(data[key]))
+
+    db.session.commit()
+    return jsonify(prefs.to_dict()), 200
 
 
 @app.route('/api/posts/<int:post_id>', methods=['DELETE'])
@@ -1917,6 +2711,94 @@ def delete_post(post_id):
     db.session.delete(post)
     db.session.commit()
     return jsonify({'message': 'Post deleted'})
+
+
+@app.route('/api/explore/recommendations', methods=['GET'], strict_slashes=False)
+@app.route('/api/recommendations/explore', methods=['GET'], strict_slashes=False)
+@jwt_required()
+def explore_recommendations():
+    try:
+        current_user_id = int(get_jwt_identity())
+        current_user = db.get_or_404(User, current_user_id)
+
+        own_posts = Post.query.filter_by(user_id=current_user_id).order_by(Post.created_at.desc()).limit(200).all()
+
+        genre_counts: dict[str, int] = {}
+        artist_counts: dict[str, int] = {}
+        for p in own_posts:
+            if p.genre:
+                g = p.genre.strip()
+                if g:
+                    genre_counts[g] = genre_counts.get(g, 0) + 1
+            if p.artist:
+                a = p.artist.strip()
+                if a:
+                    artist_counts[a] = artist_counts.get(a, 0) + 1
+
+        top_genres = [g for g, _ in sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:6]]
+        top_artists = [a for a, _ in sorted(artist_counts.items(), key=lambda x: x[1], reverse=True)[:6]]
+
+        followed_ids = [u.id for u in current_user.followed.limit(200).all()]
+
+        rec_query = Post.query.filter(Post.user_id != current_user_id)
+
+        should_filter = bool(followed_ids or top_genres or top_artists)
+        if should_filter:
+            filters = []
+            if followed_ids:
+                filters.append(Post.user_id.in_(followed_ids))
+            if top_genres:
+                filters.append(Post.genre.in_(top_genres))
+            if top_artists:
+                filters.append(Post.artist.in_(top_artists))
+            rec_query = rec_query.filter(db.or_(*filters))
+
+        candidate_posts = rec_query.order_by(Post.created_at.desc()).limit(120).all()
+
+        because_you_liked = []
+        seen_post_ids: set[int] = set()
+
+        for p in candidate_posts:
+            reason = None
+            if p.artist and p.artist in top_artists:
+                reason = f"Because you liked {p.artist}"
+            elif p.genre and p.genre in top_genres:
+                reason = f"Because you liked {p.genre}"
+
+            if reason and p.id not in seen_post_ids:
+                because_you_liked.append({
+                    'reason': reason,
+                    'post': p.to_dict(current_user_id=current_user_id),
+                })
+                seen_post_ids.add(p.id)
+
+            if len(because_you_liked) >= 8:
+                break
+
+        candidate_genre_counts: dict[str, int] = {}
+        candidate_artist_counts: dict[str, int] = {}
+        for p in candidate_posts:
+            if p.genre:
+                candidate_genre_counts[p.genre] = candidate_genre_counts.get(p.genre, 0) + 1
+            if p.artist:
+                candidate_artist_counts[p.artist] = candidate_artist_counts.get(p.artist, 0) + 1
+
+        genre_chips = [
+            g for g, _ in sorted(candidate_genre_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        ]
+        artist_chips = [
+            a for a, _ in sorted(candidate_artist_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        ]
+
+        return jsonify({
+            'because_you_liked': because_you_liked,
+            'genre_chips': genre_chips,
+            'artist_chips': artist_chips,
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f'Explore recommendations error: {str(e)}')
+        return jsonify({'error': 'Failed to load recommendations'}), 500
 
 
 @app.route('/api/explore', methods=['GET'])
@@ -2002,20 +2884,43 @@ def get_collection():
         user_id = request.args.get('user_id', type=int)
         if not user_id:
             user_id = int(get_jwt_identity())
-        
+
         media_type = request.args.get('type')  # Filter by media type (vinyl, cd, etc.)
+
+        all_user_items = CollectionItem.query.filter_by(user_id=user_id).all()
         
+        # Calculate stats
+        vinyl_count = sum(1 for i in all_user_items if i.media_type == 'vinyl')
+        cd_count = sum(1 for i in all_user_items if i.media_type == 'cd')
+        cassette_count = sum(1 for i in all_user_items if i.media_type == 'cassette')
+        
+        artist_counts = {}
+        for item in all_user_items:
+            if item.artist:
+                artist_counts[item.artist] = artist_counts.get(item.artist, 0) + 1
+        
+        top_artist: str | None = max(artist_counts.items(), key=lambda x: x[1])[0] if artist_counts else None
+
+        stats = {
+            'total': len(all_user_items),
+            'vinyl_count': vinyl_count,
+            'cd_count': cd_count,
+            'cassette_count': cassette_count,
+            'top_artist': top_artist
+        }
+
         query = CollectionItem.query.filter_by(user_id=user_id)
         if media_type:
             query = query.filter_by(media_type=media_type)
-        
+
         items = query.order_by(CollectionItem.created_at.desc()).all()
-        
+
         return jsonify({
             'items': [item.to_dict() for item in items],
-            'total': len(items)
+            'total': len(items),
+            'stats': stats
         })
-    
+
     except Exception as e:
         app.logger.error(f'Collection fetch error: {str(e)}')
         return jsonify({'error': 'Failed to load collection'}), 500
@@ -2156,6 +3061,265 @@ def update_collection_item(item_id):
         return jsonify({'error': 'Failed to update item'}), 500
 
 
+def _normalize_album_title_key(title: str) -> str:
+    return re.sub(r'[^a-z0-9]+', ' ', (title or '').lower()).strip()
+
+
+def _is_likely_single_or_ep(title: str) -> bool:
+    name = (title or '').lower().strip()
+    return ('single' in name) or bool(re.search(r'\bep\b', name))
+
+
+def _is_likely_non_studio_album(title: str) -> bool:
+    name = (title or '').lower().strip()
+    non_studio_markers = [
+        'live',
+        'remix',
+        'remixes',
+        'karaoke',
+        'instrumental',
+        'acoustic',
+        'greatest hits',
+        'best of',
+        'essentials',
+        'anthology',
+        'compilation',
+        'mixtape',
+        'soundtrack',
+        'motion picture',
+        'tribute',
+    ]
+    return any(marker in name for marker in non_studio_markers)
+
+
+def _is_likely_studio_album_item(item: dict, strict_artist_name_lc: str = '') -> bool:
+    if item.get('wrapperType') != 'collection':
+        return False
+    if (item.get('collectionType') or '').lower() != 'album':
+        return False
+
+    artist_name_lc = (item.get('artistName') or '').lower().strip()
+    if strict_artist_name_lc and artist_name_lc and artist_name_lc != strict_artist_name_lc:
+        return False
+
+    collection_artist_lc = (item.get('collectionArtistName') or '').lower().strip()
+    if collection_artist_lc == 'various artists':
+        return False
+
+    genre_lc = (item.get('primaryGenreName') or '').lower().strip()
+    if genre_lc == 'compilations':
+        return False
+
+    album_name = item.get('collectionName', '') or ''
+    if _is_likely_single_or_ep(album_name) or _is_likely_non_studio_album(album_name):
+        return False
+
+    track_count = item.get('trackCount')
+    if track_count is not None:
+        try:
+            if int(track_count) <= 5:
+                return False
+        except (TypeError, ValueError):
+            pass
+
+    return True
+
+
+def _fetch_artist_album_catalog(artist_query: str) -> list[dict]:
+    """Fetch album-only catalog for an artist from iTunes lookup endpoint."""
+    try:
+        artist_resp = requests.get(
+            'https://itunes.apple.com/search',
+            params={
+                'term': artist_query,
+                'media': 'music',
+                'entity': 'musicArtist',
+                'limit': 8,
+            },
+            timeout=8,
+        )
+        if artist_resp.status_code != 200:
+            return []
+
+        candidates = artist_resp.json().get('results', [])
+        query_lc = (artist_query or '').lower().strip()
+
+        def _name_score(name: str) -> int:
+            name_lc = (name or '').lower().strip()
+            if name_lc == query_lc:
+                return 3
+            if query_lc in name_lc:
+                return 2
+            return 1
+
+        candidates = sorted(candidates, key=lambda c: _name_score(c.get('artistName', '')), reverse=True)
+        if not candidates:
+            return []
+
+        selected = candidates[0]
+        artist_id = selected.get('artistId')
+        selected_name_lc = (selected.get('artistName') or '').lower().strip()
+        if not artist_id:
+            return []
+
+        lookup_resp = requests.get(
+            'https://itunes.apple.com/lookup',
+            params={
+                'id': artist_id,
+                'entity': 'album',
+                'limit': 200,
+            },
+            timeout=8,
+        )
+        if lookup_resp.status_code != 200:
+            return []
+
+        albums = []
+        seen = set()
+        for item in lookup_resp.json().get('results', []):
+            if not _is_likely_studio_album_item(item, strict_artist_name_lc=selected_name_lc):
+                continue
+
+            album_name = item.get('collectionName', '')
+
+            key = _normalize_album_title_key(album_name)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+
+            albums.append({
+                'track_title': '',
+                'artist': item.get('artistName', ''),
+                'album': album_name,
+                'album_art_url': (item.get('artworkUrl100') or '').replace('100x100', '500x500'),
+                'preview_url': '',
+                'genre': item.get('primaryGenreName', ''),
+                'track_id': item.get('collectionId'),
+            })
+
+        return sorted(albums, key=lambda a: (a.get('album') or '').lower())
+    except Exception:
+        return []
+
+
+@app.route('/api/collection/artist-progress', methods=['GET'])
+@jwt_required()
+def collection_artist_progress():
+    """Summary progress for artists in a user's collection."""
+    try:
+        current_user_id = int(get_jwt_identity())
+        user_id = request.args.get('user_id', type=int) or current_user_id
+        limit = request.args.get('limit', 12, type=int) or 12
+        limit = max(1, min(limit, 50))
+
+        items = CollectionItem.query.filter_by(user_id=user_id).all()
+        artists: dict[str, list[CollectionItem]] = {}
+        for item in items:
+            artist_name = (item.artist or '').strip()
+            if not artist_name:
+                continue
+            artists.setdefault(artist_name, []).append(item)
+
+        ranked = sorted(artists.items(), key=lambda kv: len(kv[1]), reverse=True)[:limit]
+
+        payload = []
+        for artist_name, artist_items in ranked:
+            owned_keys = {
+                _normalize_album_title_key(i.album_title)
+                for i in artist_items
+                if _normalize_album_title_key(i.album_title)
+            }
+
+            catalog = _fetch_artist_album_catalog(artist_name)
+            catalog_keys = {
+                _normalize_album_title_key(a.get('album', ''))
+                for a in catalog
+                if _normalize_album_title_key(a.get('album', ''))
+            }
+
+            if catalog_keys:
+                owned_count = sum(1 for k in owned_keys if k in catalog_keys)
+                total_known = len(catalog_keys)
+                missing_preview = [
+                    a.get('album', '')
+                    for a in catalog
+                    if _normalize_album_title_key(a.get('album', '')) not in owned_keys
+                ][:3]
+            else:
+                owned_count = len(owned_keys)
+                total_known = len(owned_keys)
+                missing_preview = []
+
+            completion_pct = int(round((owned_count / total_known) * 100)) if total_known > 0 else 0
+            payload.append({
+                'artist': artist_name,
+                'owned_count': owned_count,
+                'total_known': total_known,
+                'missing_count': max(total_known - owned_count, 0),
+                'completion_pct': completion_pct,
+                'missing_preview': missing_preview,
+            })
+
+        payload.sort(key=lambda x: (x['completion_pct'], -x['total_known']))
+        return jsonify(payload), 200
+    except Exception as e:
+        app.logger.error(f'Collection artist progress error: {str(e)}')
+        return jsonify({'error': 'Failed to load artist progress'}), 500
+
+
+@app.route('/api/collection/artist-progress/details', methods=['GET'])
+@jwt_required()
+def collection_artist_progress_details():
+    """Detailed progress for one artist, including missing albums."""
+    try:
+        current_user_id = int(get_jwt_identity())
+        user_id = request.args.get('user_id', type=int) or current_user_id
+        artist = (request.args.get('artist', '') or '').strip()
+        if not artist:
+            return jsonify({'error': 'artist is required'}), 400
+
+        artist_items = CollectionItem.query.filter_by(user_id=user_id).all()
+        artist_items = [
+            i for i in artist_items
+            if (i.artist or '').strip().lower() == artist.lower()
+        ]
+
+        owned_keys = {
+            _normalize_album_title_key(i.album_title)
+            for i in artist_items
+            if _normalize_album_title_key(i.album_title)
+        }
+        owned_albums = sorted({i.album_title for i in artist_items if i.album_title})
+
+        catalog = _fetch_artist_album_catalog(artist)
+        catalog_keys = {
+            _normalize_album_title_key(a.get('album', ''))
+            for a in catalog
+            if _normalize_album_title_key(a.get('album', ''))
+        }
+
+        missing_albums = [
+            a for a in catalog
+            if _normalize_album_title_key(a.get('album', '')) not in owned_keys
+        ]
+
+        total_known = len(catalog_keys) if catalog_keys else len(owned_keys)
+        owned_count = sum(1 for k in owned_keys if (k in catalog_keys if catalog_keys else True))
+        completion_pct = int(round((owned_count / total_known) * 100)) if total_known > 0 else 0
+
+        return jsonify({
+            'artist': artist,
+            'owned_count': owned_count,
+            'total_known': total_known,
+            'completion_pct': completion_pct,
+            'owned_albums': owned_albums,
+            'missing_albums': missing_albums,
+        }), 200
+    except Exception as e:
+        app.logger.error(f'Collection artist progress details error: {str(e)}')
+        return jsonify({'error': 'Failed to load artist details'}), 500
+
+
 # ─── Activity Feed Routes ──────────────────────────────────────────────────────
 
 @app.route('/api/activity', methods=['GET'])
@@ -2219,6 +3383,97 @@ def search_music():
                 'genre': item.get('primaryGenreName', ''),
                 'track_id': item.get('trackId'),
             })
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/music/search_albums', methods=['GET'])
+@jwt_required()
+def search_albums():
+    q = request.args.get('q', '').strip()
+    albums_only = request.args.get('albums_only', 'false').lower() in ('1', 'true', 'yes')
+    if not q:
+        return jsonify([])
+    try:
+        encoded = urllib.parse.quote(q)
+        source_items = []
+        selected_artist_name = q.lower().strip()
+
+        if albums_only:
+            # Build a more complete discography by resolving artist first, then looking up albums.
+            artist_search_url = f'https://itunes.apple.com/search?term={encoded}&media=music&entity=musicArtist&limit=8'
+            with urllib.request.urlopen(artist_search_url, timeout=5) as response:
+                artist_data = json_lib.loads(response.read())
+
+            artist_candidates = artist_data.get('results', [])
+            query_lc = q.lower().strip()
+
+            def _name_score(item_name: str) -> int:
+                name_lc = (item_name or '').lower().strip()
+                if name_lc == query_lc:
+                    return 3
+                if query_lc in name_lc:
+                    return 2
+                return 1
+
+            artist_candidates = sorted(
+                artist_candidates,
+                key=lambda a: _name_score(a.get('artistName', '')),
+                reverse=True
+            )
+
+            artist_id = artist_candidates[0].get('artistId') if artist_candidates else None
+            selected_artist_name = (artist_candidates[0].get('artistName', '') if artist_candidates else q).lower().strip()
+
+            if artist_id:
+                lookup_url = f'https://itunes.apple.com/lookup?id={artist_id}&entity=album&limit=200'
+                with urllib.request.urlopen(lookup_url, timeout=6) as response:
+                    lookup_data = json_lib.loads(response.read())
+                source_items = lookup_data.get('results', [])
+
+                source_items = [
+                    item for item in source_items
+                    if _is_likely_studio_album_item(item, strict_artist_name_lc=selected_artist_name)
+                ]
+
+            if not source_items:
+                # Fallback: standard album search if lookup cannot resolve artist.
+                fallback_url = f'https://itunes.apple.com/search?term={encoded}&media=music&limit=40&entity=album'
+                with urllib.request.urlopen(fallback_url, timeout=5) as response:
+                    fallback_data = json_lib.loads(response.read())
+                source_items = fallback_data.get('results', [])
+        else:
+            url = f'https://itunes.apple.com/search?term={encoded}&media=music&limit=15&entity=album'
+            with urllib.request.urlopen(url, timeout=5) as response:
+                data = json_lib.loads(response.read())
+            source_items = data.get('results', [])
+
+        results = []
+        seen_collection_ids = set()
+        for item in source_items:
+            collection_id = item.get('collectionId')
+            if collection_id in seen_collection_ids:
+                continue
+            seen_collection_ids.add(collection_id)
+
+            album_name = item.get('collectionName', '') or ''
+            if albums_only and not _is_likely_studio_album_item(item, strict_artist_name_lc=selected_artist_name):
+                continue
+
+            results.append({
+                'track_title': '',
+                'artist': item.get('artistName', ''),
+                'album': album_name,
+                'album_art_url': item.get('artworkUrl100', '').replace('100x100', '500x500'),
+                'preview_url': '',
+                'genre': item.get('primaryGenreName', ''),
+                'track_id': collection_id,
+            })
+
+        if albums_only:
+            # Keep deterministic ordering for discography completeness tracking.
+            results = sorted(results, key=lambda r: (r.get('album') or '').lower())
+
         return jsonify(results)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -2292,6 +3547,132 @@ def serve_upload(subpath, filename):
     from flask import send_from_directory
     uploads_dir = os.path.join(_BASE_DIR, 'uploads', subpath)
     return send_from_directory(uploads_dir, filename)
+
+
+# --- Background Sync --------------------------------------------------------
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+
+def sync_spotify_history():
+    '''Runs periodically to fetch and sync users' Spotify history so they don't have to keep the app open.'''
+    with app.app_context():
+        # Get users with linked spotify
+        users = User.query.filter(User.spotify_refresh_token.isnot(None), User.spotify_refresh_token != '').all()
+        for user in users:
+            try:
+                # 1. Sync History
+                data, err = _spotify_get(user, 'me/player/recently-played?limit=20')
+                if not err and data:
+                    items = data.get('items', [])
+                    if items:
+                        added_count = 0
+                        # iterate from oldest to newest correctly
+                        for item in reversed(items):
+                            t = item.get('track', {})
+                            played_at_str = item.get('played_at')
+                            if not played_at_str or not t:
+                                continue
+
+                            # parse played_at: e.g. "2023-11-20T14:42:15.000Z"
+                            try:
+                                played_at_dt = datetime.fromisoformat(played_at_str.replace('Z', '+00:00'))
+                            except Exception:
+                                continue
+
+                            # Check if post already exists
+                            existing = Post.query.filter_by(
+                                user_id=user.id,
+                                post_type='history',
+                                listened_at=played_at_dt
+                            ).first()
+
+                            if not existing:
+                                post = Post(
+                                    user_id=user.id,
+                                    track_title=(t.get('name') or '')[:200],
+                                    artist=', '.join((a.get('name') or '') for a in (t.get('artists') or []))[:200],
+                                    album=((t.get('album') or {}).get('name') or '')[:200],
+                                    album_art_url=(((t.get('album') or {}).get('images') or [{}])[0].get('url') or '')[:500],
+                                    caption='',
+                                    post_type='history',
+                                    preview_url=(t.get('preview_url') or '')[:500],
+                                    spotify_url=((t.get('external_urls') or {}).get('spotify') or '')[:500],
+                                    listened_at=played_at_dt,
+                                    created_at=played_at_dt
+                                )
+                                db.session.add(post)
+                                added_count += 1
+
+                        if added_count > 0:
+                            db.session.commit()
+                            app.logger.info(f"[Spotify Sync] Synced {added_count} new historical tracks for user {user.id}")
+
+                # 2. Sync Currently Playing (Now Playing integration)
+                live_data, live_err = _spotify_get(user, 'me/player/currently-playing')
+                
+                # Find the existing now_playing post
+                now_playing_post = Post.query.filter_by(
+                    user_id=user.id,
+                    post_type='now_playing'
+                ).first()
+                
+                is_playing = live_data and live_data.get('is_playing') == True
+                
+                if not live_err and is_playing and live_data.get('item'):
+                    t = live_data.get('item', {})
+                    if t.get('type') == 'track':
+                        # They are playing something right now
+                        track_title=(t.get('name') or '')[:200]
+                        artist=', '.join((a.get('name') or '') for a in (t.get('artists') or []))[:200]
+                        album=((t.get('album') or {}).get('name') or '')[:200]
+                        album_art_url=(((t.get('album') or {}).get('images') or [{}])[0].get('url') or '')[:500]
+                        
+                        if now_playing_post:
+                            # Update if changed
+                            if now_playing_post.track_title != track_title or now_playing_post.artist != artist:
+                                now_playing_post.track_title = track_title
+                                now_playing_post.artist = artist
+                                now_playing_post.album = album
+                                now_playing_post.album_art_url = album_art_url
+                                now_playing_post.preview_url = (t.get('preview_url') or '')[:500]
+                                now_playing_post.spotify_url = ((t.get('external_urls') or {}).get('spotify') or '')[:500]
+                                now_playing_post.created_at = datetime.utcnow()
+                                db.session.commit()
+                        else:
+                            # Create new now_playing post
+                            post = Post(
+                                user_id=user.id,
+                                track_title=track_title,
+                                artist=artist,
+                                album=album,
+                                album_art_url=album_art_url,
+                                caption='Listening Now',
+                                post_type='now_playing',
+                                preview_url=(t.get('preview_url') or '')[:500],
+                                spotify_url=((t.get('external_urls') or {}).get('spotify') or '')[:500],
+                            )
+                            db.session.add(post)
+                            db.session.commit()
+                else:
+                    # Nothing is playing or player paused, remove the now playing post
+                    if now_playing_post:
+                        db.session.delete(now_playing_post)
+                        db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                import traceback
+                app.logger.error(f"[Spotify Sync] Error syncing history for user {user.id}: {traceback.format_exc()}")
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(
+    func=sync_spotify_history, 
+    trigger=IntervalTrigger(minutes=1), 
+    id='spotify_history_sync', 
+    replace_existing=True,
+    next_run_time=datetime.utcnow()
+)
+scheduler.start()
+
 
 if __name__ == '__main__':
     with app.app_context():
