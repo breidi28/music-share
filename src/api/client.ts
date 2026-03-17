@@ -4,7 +4,9 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import Toast from 'react-native-toast-message';
 
-const PROD_API_BASE_URL = 'https://music-share-production.up.railway.app/api';
+// TODO: replace this with your actual Render service URL once deployed
+// Format: https://<your-service-name>.onrender.com/api
+const PROD_API_BASE_URL = 'https://music-share-backend.onrender.com/api';
 const WEB_LOCAL_API_BASE_URL = 'http://127.0.0.1:5000/api';
 
 const getNativeDevApiBaseUrl = () => {
