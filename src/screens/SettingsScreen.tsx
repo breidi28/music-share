@@ -28,6 +28,8 @@ import { ResponseType } from 'expo-auth-session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
+import { HIG } from '../theme/hig';
+import { UtilityScreen } from '../theme/utilityScreen';
 import { spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, usersApi, notificationsApi } from '../api/endpoints';
 import { User } from '../types';
 
@@ -554,7 +556,7 @@ export default function SettingsScreen({ navigation }: any) {
     const SettingSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
         <View style={{ marginBottom: 32 }}>
             <Text style={{ 
-                color: '#6b7280', 
+                color: HIG.secondaryText,
                 fontSize: 13, 
                 fontWeight: '600', 
                 textTransform: 'uppercase', 
@@ -564,7 +566,7 @@ export default function SettingsScreen({ navigation }: any) {
             }}>
                 {title}
             </Text>
-            <View style={{ backgroundColor: '#1c1c1e', borderRadius: 12, marginHorizontal: 16 }}>
+            <View style={{ backgroundColor: HIG.groupedCard, borderRadius: HIG.sectionCornerRadius, marginHorizontal: 16 }}>
                 {children}
             </View>
         </View>
@@ -603,8 +605,9 @@ export default function SettingsScreen({ navigation }: any) {
             alignItems: 'center' as const,
             paddingVertical: 14,
             paddingHorizontal: 16,
-            borderBottomWidth: isLast ? 0 : 0.5,
-            borderBottomColor: 'rgba(255,255,255,0.1)',
+            minHeight: HIG.rowMinHeight,
+            borderBottomWidth: isLast ? 0 : HIG.separatorThickness,
+            borderBottomColor: HIG.separator,
         };
 
         const content = (
@@ -641,7 +644,7 @@ export default function SettingsScreen({ navigation }: any) {
         }
 
         return (
-            <TouchableOpacity onPress={onPress} style={rowStyle}>
+            <TouchableOpacity onPress={onPress} style={rowStyle} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
                 {content}
             </TouchableOpacity>
         );
@@ -677,48 +680,72 @@ export default function SettingsScreen({ navigation }: any) {
                 alignItems: 'center',
                 paddingVertical: 14,
                 paddingHorizontal: 16,
-                borderBottomWidth: isLast ? 0 : 0.5,
-                borderBottomColor: 'rgba(255,255,255,0.1)',
+                minHeight: HIG.rowMinHeight,
+                borderBottomWidth: isLast ? 0 : HIG.separatorThickness,
+                borderBottomColor: HIG.separator,
             }}
         >
-            <FontAwesome5 name={icon} size={20} color={connected ? color : '#6b7280'} />
-            <Text style={{ 
-                color: connected ? 'white' : '#9ca3af', 
-                fontSize: 16, 
-                marginLeft: 12, 
-                flex: 1,
-            }}>
-                {label}
-            </Text>
+            <View
+                style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: connected ? `${color}1F` : 'rgba(255,255,255,0.06)',
+                    borderWidth: 1,
+                    borderColor: connected ? `${color}55` : 'rgba(255,255,255,0.08)',
+                }}
+            >
+                <FontAwesome5 name={icon} size={16} color={connected ? color : '#9ca3af'} />
+            </View>
+
+            <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+                    {label}
+                </Text>
+                <Text style={{ color: connected ? '#86efac' : '#6b7280', fontSize: 12, marginTop: 2 }}>
+                    {connected ? 'Connected' : 'Not connected'}
+                </Text>
+            </View>
+
             {loading ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
             ) : connected ? (
                 <TouchableOpacity 
                     onPress={onDisconnect}
                     style={{ 
-                        backgroundColor: 'rgba(239,68,68,0.1)', 
-                        borderRadius: 20, 
-                        paddingHorizontal: 12, 
-                        paddingVertical: 6,
+                        backgroundColor: 'rgba(255,255,255,0.06)', 
+                        borderRadius: 12, 
+                        paddingHorizontal: 14, 
+                        paddingVertical: 8,
                         borderWidth: 1,
-                        borderColor: 'rgba(239,68,68,0.3)',
+                        borderColor: 'rgba(255,255,255,0.12)',
+                        minHeight: HIG.touchTargetMin,
+                        minWidth: 108,
+                        justifyContent: 'center',
+                        alignItems: 'center',
                     }}
                 >
-                    <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '600' }}>Disconnect</Text>
+                    <Text style={{ color: '#fca5a5', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 }}>Disconnect</Text>
                 </TouchableOpacity>
             ) : (
                 <TouchableOpacity 
                     onPress={onConnect}
                     style={{ 
-                        backgroundColor: `${color}15`, 
-                        borderRadius: 20, 
-                        paddingHorizontal: 12, 
-                        paddingVertical: 6,
+                        backgroundColor: 'rgba(255,255,255,0.06)', 
+                        borderRadius: 12, 
+                        paddingHorizontal: 14, 
+                        paddingVertical: 8,
                         borderWidth: 1,
-                        borderColor: `${color}40`,
+                        borderColor: 'rgba(255,255,255,0.12)',
+                        minHeight: HIG.touchTargetMin,
+                        minWidth: 108,
+                        justifyContent: 'center',
+                        alignItems: 'center',
                     }}
                 >
-                    <Text style={{ color: color, fontSize: 13, fontWeight: '600' }}>Connect</Text>
+                    <Text style={{ color: Colors.primary, fontSize: 13, fontWeight: '700', letterSpacing: 0.2 }}>Connect</Text>
                 </TouchableOpacity>
             )}
         </View>
@@ -736,22 +763,27 @@ export default function SettingsScreen({ navigation }: any) {
             <View
                 style={{
                     paddingTop: insets.top,
-                    backgroundColor: '#000',
-                    borderBottomWidth: 0.5,
-                    borderBottomColor: 'rgba(255,255,255,0.1)',
+                    backgroundColor: UtilityScreen.header.backgroundColor,
+                    borderBottomWidth: UtilityScreen.header.borderBottomWidth,
+                    borderBottomColor: UtilityScreen.header.borderBottomColor,
                 }}
             >
-                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 16 }}>
-                        <Ionicons name="chevron-back" size={28} color="white" />
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: UtilityScreen.header.horizontalPadding, paddingVertical: UtilityScreen.header.verticalPadding }}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: UtilityScreen.header.backButtonMarginRight, minWidth: HIG.touchTargetMin, minHeight: HIG.touchTargetMin, justifyContent: 'center' }}>
+                        <Ionicons name="chevron-back" size={UtilityScreen.header.backIconSize} color="white" />
                     </TouchableOpacity>
-                    <Text style={{ fontSize: 34, fontWeight: '700', color: 'white', letterSpacing: -0.5, flex: 1 }}>
+                    <Text style={{ fontSize: UtilityScreen.header.titleSize, fontWeight: UtilityScreen.header.titleWeight, color: 'white', letterSpacing: UtilityScreen.header.titleLetterSpacing, flex: 1 }}>
                         Settings
                     </Text>
                 </View>
             </View>
 
-            <ScrollView contentContainerStyle={{ paddingVertical: 24, paddingBottom: 100 }}>
+            <ScrollView
+                contentContainerStyle={{
+                    paddingTop: UtilityScreen.content.topPadding,
+                    paddingBottom: UtilityScreen.content.bottomPadding,
+                }}
+            >
                 {/* ═══════════════════════════════════════════════════════════
                     Account Section - Profile and user info
                     ═══════════════════════════════════════════════════════════ */}
@@ -759,7 +791,7 @@ export default function SettingsScreen({ navigation }: any) {
                     <SettingRow
                         icon="person-outline"
                         label="Edit Profile"
-                        onPress={() => navigation.navigate('Profile')}
+                        onPress={() => navigation.navigate('EditProfile')}
                     />
                     <SettingRow
                         icon="at-outline"
@@ -924,6 +956,16 @@ export default function SettingsScreen({ navigation }: any) {
                         icon="information-circle-outline"
                         label="About music share"
                         onPress={() => Toast.show({ type: 'info', text1: 'Music Share', text2: 'Version 1.0.0 - A social music sharing platform.' })}
+                    />
+                    <SettingRow
+                        icon="sparkles-outline"
+                        label="Changelog"
+                        onPress={() => navigation.navigate('Changelog')}
+                    />
+                    <SettingRow
+                        icon="stats-chart-outline"
+                        label="Weekly Recap"
+                        onPress={() => navigation.navigate('WeeklyRecap')}
                     />
                     <SettingRow
                         icon="document-text-outline"

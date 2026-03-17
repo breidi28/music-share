@@ -27,6 +27,12 @@ import TermsScreen from '../screens/TermsScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import HelpSupportScreen from '../screens/HelpSupportScreen';
 import FollowersListScreen from '../screens/FollowersListScreen';
+import ListenLaterScreen from '../screens/ListenLaterScreen';
+import ChangelogScreen from '../screens/ChangelogScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
+import CollaborativeListsScreen from '../screens/CollaborativeListsScreen';
+import WeeklyRecapScreen from '../screens/WeeklyRecapScreen';
+import ArtistProgressScreen from '../screens/ArtistProgressScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -195,6 +201,14 @@ export default function AppNavigator() {
                                 animation: 'slide_from_right',
                             }}
                         />
+                        <Stack.Screen
+                            name="EditProfile"
+                            component={EditProfileScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
                         <Stack.Screen 
                             name="Terms" 
                             component={TermsScreen}
@@ -230,6 +244,46 @@ export default function AppNavigator() {
                         <Stack.Screen 
                             name="Collection" 
                             component={CollectionScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen
+                            name="ListenLater"
+                            component={ListenLaterScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen
+                            name="Changelog"
+                            component={ChangelogScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen
+                            name="CollaborativeLists"
+                            component={CollaborativeListsScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen
+                            name="WeeklyRecap"
+                            component={WeeklyRecapScreen}
+                            options={{
+                                presentation: 'card',
+                                animation: 'slide_from_right',
+                            }}
+                        />
+                        <Stack.Screen
+                            name="ArtistProgress"
+                            component={ArtistProgressScreen}
                             options={{
                                 presentation: 'card',
                                 animation: 'slide_from_right',

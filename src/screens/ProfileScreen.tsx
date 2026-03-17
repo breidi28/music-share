@@ -8,8 +8,10 @@ import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { ResponseType } from 'expo-auth-session';
 import * as ImagePicker from 'expo-image-picker';
-import { User, Post, PostType } from '../types';
-import { usersApi, postsApi, spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi } from '../api/endpoints';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-toast-message';
+import { User, Post, PostType, ReactionType } from '../types';
+import { usersApi, postsApi, spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, listenLaterApi, collectionApi } from '../api/endpoints';
 import { API_BASE_URL } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
@@ -30,6 +32,8 @@ const FILTER_TABS: { key: PostType | 'all'; label: string; icon: keyof typeof Io
     { key: 'loved', label: 'Loved', icon: 'heart-outline' },
     { key: 'history', label: 'History', icon: 'time-outline' },
 ];
+
+const PROFILE_ACCENTS = ['#FA243C', '#10B981', '#3B82F6', '#F59E0B', '#A855F7', '#14B8A6'];
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -52,6 +56,7 @@ console.log('[Music Services OAuth] Spotify Redirect URI:', SPOTIFY_REDIRECT_URI
 
 export default function ProfileScreen({ navigation, route }: any) {
     const { userId } = route.params ?? {};
+    const { openEdit } = route.params ?? {};
     const { user: me, logout } = useAuthStore();
     const targetId = userId ?? me?.id;
     const isMe = targetId === me?.id;
@@ -100,6 +105,7 @@ export default function ProfileScreen({ navigation, route }: any) {
     const [qobuzLoading, setQobuzLoading] = useState(false);
     const [qobuzLoginVisible, setQobuzLoginVisible] = useState(false);
     const [qobuzCredentials, setQobuzCredentials] = useState({ username: '', password: '' });
+    const [accentColor, setAccentColor] = useState(Colors.primary);
     
     const [tasteMatch, setTasteMatch] = useState<number | null>(null);
     const [editMode, setEditMode] = useState(false);
@@ -368,8 +374,15 @@ export default function ProfileScreen({ navigation, route }: any) {
                     setLiveTrack(null);
                 }
             } catch (err: any) {
-                console.error('[Spotify Live] Error:', err);
-                console.error('[Spotify Live] Details:', err.response?.data);
+                const isTimeout = err?.code === 'ECONNABORTED' || String(err?.message || '').toLowerCase().includes('timeout');
+                if (isTimeout) {
+                    // Keep last known live state on transient timeout to avoid UI flicker.
+                    return;
+                }
+                console.error('[Spotify Live] Error:', err?.message || err);
+                if (err?.response?.data) {
+                    console.error('[Spotify Live] Details:', err.response.data);
+                }
                 setLiveTrack(null);
             }
         };
@@ -434,6 +447,42 @@ export default function ProfileScreen({ navigation, route }: any) {
 
     useEffect(() => { setLoading(true); load(); }, [filter]);
 
+    useEffect(() => {
+        if (isMe && openEdit && profile) {
+            setEditData({
+                display_name: profile.display_name || '',
+                bio: profile.bio || '',
+                favorite_genres: profile.favorite_genres || '',
+                avatar_url: profile.avatar_url || '',
+            });
+            setEditMode(true);
+            navigation.setParams({ openEdit: false });
+        }
+    }, [isMe, openEdit, profile]);
+
+    useEffect(() => {
+        const loadAccent = async () => {
+            if (!isMe || !me?.id) return;
+            try {
+                const key = `profileAccent:${me.id}`;
+                const stored = await AsyncStorage.getItem(key);
+                if (stored) setAccentColor(stored);
+            } catch {}
+        };
+        loadAccent();
+    }, [isMe, me?.id]);
+
+    useEffect(() => {
+        const saveAccent = async () => {
+            if (!isMe || !me?.id) return;
+            try {
+                const key = `profileAccent:${me.id}`;
+                await AsyncStorage.setItem(key, accentColor);
+            } catch {}
+        };
+        saveAccent();
+    }, [accentColor, isMe, me?.id]);
+
     const handleFollow = async () => {
         if (!profile) return;
         try {
@@ -448,6 +497,53 @@ export default function ProfileScreen({ navigation, route }: any) {
             setPosts(prev => prev.map(p =>
                 p.id === postId ? { ...p, is_liked: res.data.is_liked, likes_count: res.data.likes_count } : p
             ));
+        } catch { }
+    };
+
+    const handleQuickReact = async (postId: number, reaction: ReactionType) => {
+        const target = posts.find(p => p.id === postId);
+        const hasReaction = target?.my_reactions?.includes(reaction);
+
+        try {
+            if (hasReaction) {
+                await postsApi.removeReaction(postId, reaction);
+            } else {
+                await postsApi.addReaction(postId, reaction);
+            }
+
+            const res = await postsApi.getReactions(postId);
+            setPosts(prev => prev.map(p =>
+                p.id === postId
+                    ? { ...p, my_reactions: res.data.my_reactions, reaction_counts: res.data.counts }
+                    : p
+            ));
+        } catch { }
+    };
+
+    const handleListenLater = async (post: Post) => {
+        try {
+            await listenLaterApi.add({
+                track_title: post.track_title,
+                artist: post.artist,
+                album: post.album || '',
+                album_art_url: post.album_art_url || '',
+                source_service: 'spotify',
+                source_url: post.spotify_url || '',
+            });
+            Toast.show({ type: 'success', text1: 'Saved to Listen Later' });
+        } catch { }
+    };
+
+    const handleSaveToCollection = async (post: Post) => {
+        try {
+            await collectionApi.addItem({
+                media_type: 'digital',
+                album_title: post.album || post.track_title,
+                artist: post.artist,
+                album_art_url: post.album_art_url || '',
+                notes: `Saved from profile: ${post.track_title}`,
+            });
+            Toast.show({ type: 'success', text1: 'Saved to Collection' });
         } catch { }
     };
 
@@ -527,7 +623,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                         onPress={() => navigation.navigate('Settings')} 
                         style={{ padding: 4, width: 60 }}
                     >
-                        <Ionicons name="settings-outline" size={24} color={Colors.primary} style={{ alignSelf: 'flex-end' }} />
+                        <Ionicons name="settings-outline" size={24} color={accentColor} style={{ alignSelf: 'flex-end' }} />
                     </TouchableOpacity>
                 ) : <View style={{ width: 60 }} />}
             </View>
@@ -557,11 +653,33 @@ export default function ProfileScreen({ navigation, route }: any) {
                     <Text style={{ color: '#EBEBF5', textAlign: 'center', fontSize: 15, lineHeight: 22, marginTop: 12, maxWidth: 300 }}>{profile.bio}</Text>
                 ) : null}
 
+                {isMe && (
+                    <TouchableOpacity
+                        onPress={() => navigation.navigate('WeeklyRecap')}
+                        style={{
+                            marginTop: 14,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            alignSelf: 'center',
+                            backgroundColor: 'rgba(255,255,255,0.06)',
+                            borderWidth: 1,
+                            borderColor: 'rgba(255,255,255,0.12)',
+                            borderRadius: 999,
+                            paddingHorizontal: 12,
+                            minHeight: 36,
+                        }}
+                    >
+                        <Ionicons name="stats-chart" size={14} color={accentColor} />
+                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginLeft: 6 }}>Weekly Recap</Text>
+                        <Ionicons name="chevron-forward" size={14} color="#8E8E93" style={{ marginLeft: 4 }} />
+                    </TouchableOpacity>
+                )}
+
                 {/* Genre pills - more subtle for Apple design */}
                 {profile?.favorite_genres ? (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 16 }}>
                         {profile.favorite_genres.split(',').filter(Boolean).map(g => (
-                            <View key={g} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#1C1C1E' }}>
+                            <View key={g} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: `${accentColor}40` }}>
                                 <Text style={{ color: '#EBEBF5', fontSize: 13, fontWeight: '500' }}>{g.trim()}</Text>
                             </View>
                         ))}
@@ -569,23 +687,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                 ) : null}
 
                 {/* Actions Row */}
-                <View style={{ flexDirection: 'row', gap: 12, marginTop: 24, width: '100%' }}>
-                    {isMe ? (
-                        <TouchableOpacity
-                            onPress={() => {
-                                setEditData({
-                                    display_name: profile?.display_name || '',
-                                    bio: profile?.bio || '',
-                                    favorite_genres: profile?.favorite_genres || '',
-                                    avatar_url: profile?.avatar_url || ''
-                                });
-                                setEditMode(true);
-                            }}
-                            style={{ flex: 1, backgroundColor: '#2C2C2E', borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}
-                        >
-                            <Text style={{ color: 'white', fontSize: 15, fontWeight: '600' }}>Edit Profile</Text>
-                        </TouchableOpacity>
-                    ) : (
+                {!isMe && (
+                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 24, width: '100%' }}>
                         <>
                             <TouchableOpacity
                                 onPress={handleFollow}
@@ -600,8 +703,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                                 </View>
                             )}
                         </>
-                    )}
-                </View>
+                    </View>
+                )}
             </View>
 
             {/* ── Stats card (Inset Grouped Style) ────────────────────── */}
@@ -790,10 +893,10 @@ export default function ProfileScreen({ navigation, route }: any) {
                             <TouchableOpacity
                                 key={tab.key}
                                 onPress={() => setFilter(tab.key)}
-                                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: active ? '#FFFFFF' : '#1C1C1E' }}
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: active ? accentColor : '#1C1C1E' }}
                             >
-                                <Ionicons name={tab.icon} size={15} color={active ? 'black' : '#8E8E93'} />
-                                <Text style={{ fontSize: 15, fontWeight: '600', color: active ? 'black' : '#8E8E93' }}>{tab.label}</Text>
+                                <Ionicons name={tab.icon} size={15} color={active ? 'white' : '#8E8E93'} />
+                                <Text style={{ fontSize: 15, fontWeight: '600', color: active ? 'white' : '#8E8E93' }}>{tab.label}</Text>
                             </TouchableOpacity>
                         );
                     })}
@@ -813,6 +916,9 @@ export default function ProfileScreen({ navigation, route }: any) {
                         post={item}
                         onLike={handleLike}
                         onComment={post => { setSelectedPost(post); setCommentsVisible(true); }}
+                        onSaveToCollection={handleSaveToCollection}
+                        onQuickReact={handleQuickReact}
+                        onListenLater={handleListenLater}
                         onAuthorPress={uid => navigation.navigate('Profile', { userId: uid })}
                         onDelete={handleDelete}
                         isOwn={item.user_id === me?.id}
@@ -904,6 +1010,24 @@ export default function ProfileScreen({ navigation, route }: any) {
                         placeholderTextColor="#4b5563"
                         keyboardAppearance="dark"
                     />
+
+                    <Text style={{ color: '#6b7280', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>Profile Accent</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
+                        {PROFILE_ACCENTS.map(color => (
+                            <TouchableOpacity
+                                key={color}
+                                onPress={() => setAccentColor(color)}
+                                style={{
+                                    width: 30,
+                                    height: 30,
+                                    borderRadius: 15,
+                                    backgroundColor: color,
+                                    borderWidth: accentColor === color ? 2 : 0,
+                                    borderColor: 'white',
+                                }}
+                            />
+                        ))}
+                    </View>
                 </View>
             </Modal>
         </View>

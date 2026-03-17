@@ -127,3 +127,77 @@ export interface CollectionResponse {
   total: number;
   stats?: CollectionStats;
 }
+
+export interface ArtistDiscographyProgressSummary {
+  artist: string;
+  owned_count: number;
+  total_known: number;
+  missing_count: number;
+  completion_pct: number;
+  missing_preview: string[];
+}
+
+export interface ArtistDiscographyProgressDetail {
+  artist: string;
+  owned_count: number;
+  total_known: number;
+  completion_pct: number;
+  owned_albums: string[];
+  missing_albums: MusicSearchResult[];
+}
+
+export interface CollabListTrack {
+  id: number;
+  list_id: number;
+  added_by: number;
+  track_title: string;
+  artist: string;
+  album: string;
+  album_art_url: string;
+  source_service: string;
+  source_url: string;
+  created_at: string;
+  added_by_user?: User | null;
+}
+
+export interface CollabList {
+  id: number;
+  owner_id: number;
+  name: string;
+  description: string;
+  is_weekly_challenge: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  created_at: string;
+  owner: User;
+  member_count: number;
+  track_count: number;
+  my_role?: 'owner' | 'member' | null;
+  tracks: CollabListTrack[];
+}
+
+export interface WeeklyRecapSummary {
+  top_artist: string | null;
+  top_genre: string | null;
+  posts_shared: number;
+  now_playing_posts: number;
+  collection_adds: number;
+  total_scrobbles: number;
+  unique_artists: number;
+  unique_tracks: number;
+  unique_albums: number;
+  active_days: number;
+  busiest_day: string | null;
+  top_artists: Array<{ name: string; plays: number }>;
+  top_tracks: Array<{ title: string; artist: string; plays: number; album_art_url?: string }>;
+  top_albums: Array<{ name: string; artist: string; plays: number; album_art_url?: string }>;
+}
+
+export interface WeeklyRecap {
+  id: number;
+  user_id: number;
+  week_start: string;
+  summary: WeeklyRecapSummary;
+  image_url: string;
+  generated_at: string;
+}

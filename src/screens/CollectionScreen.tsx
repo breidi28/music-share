@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, FlatList, TouchableOpacity, Image, RefreshControl, ActivityIndicator, Modal, TextInput, Alert, ScrollView, Platform, StyleSheet, Text, KeyboardAvoidingView } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,21 +9,312 @@ import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
 
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { InteractiveCDView } from '../components/InteractiveCDView';
+import { InteractiveVinylView } from '../components/InteractiveVinylView';
 
-const MEDIA_TYPES: { key: MediaType; label: string; icon: string }[] = [
+export const MEDIA_TYPES: { key: MediaType; label: string; icon: string }[] = [
     { key: 'vinyl', label: 'Vinyl', icon: 'record-vinyl' },
     { key: 'cd', label: 'CD', icon: 'compact-disc' },
     { key: 'cassette', label: 'Cassette', icon: 'tape' },
     { key: 'digital', label: 'Digital', icon: 'music' },
 ];
 
-const CONDITION_OPTIONS = [
+export const CONDITION_OPTIONS = [
     { key: 'mint', label: 'Mint', icon: 'star' },
     { key: 'near-mint', label: 'Near Mint', icon: 'star-half' },
     { key: 'good', label: 'Good', icon: 'thumbs-up' },
     { key: 'fair', label: 'Fair', icon: 'minus' },
     { key: 'poor', label: 'Poor', icon: 'thumbs-down' },
 ];
+
+// Memoized components for better performance
+const VinylMedia = React.memo(({ art }: { art?: string }) => (
+    <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 92, height: 92, borderRadius: 46, backgroundColor: '#0a0a0a', borderWidth: 1, borderColor: '#2f2f2f', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 74, height: 74, borderRadius: 37, borderWidth: 1, borderColor: '#202020', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 58, height: 58, borderRadius: 29, overflow: 'hidden', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
+                    {art ? (
+                        <Image source={{ uri: art }} style={{ width: '100%', height: '100%' }} />
+                    ) : (
+                        <FontAwesome5 name="record-vinyl" size={20} color="#4b5563" />
+                    )}
+                </View>
+            </View>
+            <View style={{ position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#e5e7eb' }} />
+        </View>
+    </View>
+));
+
+const CDMedia = React.memo(({ art }: { art?: string }) => (
+    <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ 
+            width: 94, 
+            height: 84, 
+            borderRadius: 4, 
+            backgroundColor: 'rgba(255,255,255,0.05)', 
+            borderWidth: 1.5, 
+            borderColor: 'rgba(255,255,255,0.1)', 
+            padding: 2,
+            overflow: 'hidden',
+            shadowColor: '#000',
+            shadowOffset: { width: 4, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 3,
+        }}>
+            <View style={{ position: 'absolute', left: 8, top: 0, bottom: 0, width: 1.5, backgroundColor: 'rgba(255,255,255,0.1)', zIndex: 10 }} />
+            <View style={{ flex: 1, backgroundColor: '#0f0f0f', borderRadius: 2, padding: 4, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ 
+                    width: 72, 
+                    height: 72, 
+                    borderRadius: 36, 
+                    backgroundColor: '#1a1a1a', 
+                    borderWidth: 0.5, 
+                    borderColor: '#333',
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    overflow: 'hidden'
+                }}>
+                    {/* Iridescent Reflection Layer (Bottom) */}
+                    <View style={{ 
+                        position: 'absolute', 
+                        width: '200%', 
+                        height: '200%', 
+                        backgroundColor: 'rgba(139, 92, 246, 0.08)', 
+                        transform: [{ rotate: '45deg' }],
+                        top: '-50%',
+                        left: '-50%',
+                        zIndex: 1
+                    }} />
+                    
+                    {/* Full-disc Album Art */}
+                    <View style={{ 
+                        width: 72, 
+                        height: 72, 
+                        borderRadius: 36, 
+                        overflow: 'hidden',
+                        zIndex: 2
+                    }}>
+                        {art ? (
+                            <Image source={{ uri: art }} style={{ width: '100%', height: '100%', opacity: 0.95 }} />
+                        ) : (
+                            <View style={{ flex: 1, backgroundColor: '#1f2937', justifyContent: 'center', alignItems: 'center' }}>
+                                <FontAwesome5 name="compact-disc" size={24} color="#4b5563" />
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Center Hole (Top) */}
+                    <View style={{ 
+                        position: 'absolute',
+                        width: 14, 
+                        height: 14, 
+                        borderRadius: 7, 
+                        backgroundColor: '#000',
+                        borderWidth: 1.5,
+                        borderColor: '#374151',
+                        zIndex: 3
+                    }} />
+
+                    {/* Outer Glossy Ring (Top) */}
+                    <View style={{ 
+                        position: 'absolute',
+                        top: 0, left: 0, right: 0, bottom: 0,
+                        borderWidth: 6,
+                        borderColor: 'rgba(255,255,255,0.06)',
+                        borderRadius: 36,
+                        zIndex: 4
+                    }} />
+                </View>
+            </View>
+            <View style={{ position: 'absolute', top: 0, left: 20, right: 0, height: 0.5, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+            <View style={{ position: 'absolute', top: 10, right: 4, width: 2, height: 20, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 1 }} />
+        </View>
+    </View>
+));
+
+const CassetteMedia = React.memo(({ art }: { art?: string }) => (
+    <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 92, height: 70, borderRadius: 8, backgroundColor: '#2a2a2f', borderWidth: 1, borderColor: '#4b5563', padding: 8 }}>
+            <View style={{ flex: 1, borderRadius: 6, backgroundColor: '#111827', paddingHorizontal: 8, paddingVertical: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
+                    <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#6b7280', alignItems: 'center', justifyContent: 'center' }}>
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#111827' }} />
+                    </View>
+                    <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#6b7280', alignItems: 'center', justifyContent: 'center' }}>
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#111827' }} />
+                    </View>
+                </View>
+            </View>
+            <View style={{ position: 'absolute', left: 10, right: 10, top: 8, height: 12, borderRadius: 4, overflow: 'hidden', backgroundColor: '#374151' }}>
+                {art ? (
+                    <Image source={{ uri: art }} style={{ width: '100%', height: '100%', opacity: 0.65 }} />
+                ) : null}
+            </View>
+        </View>
+    </View>
+));
+
+const DigitalMedia = React.memo(({ art }: { art?: string }) => (
+    <View style={{ width: 96, height: 96, borderRadius: 12, backgroundColor: '#111827', borderWidth: 1, borderColor: '#374151', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {art ? (
+            <Image source={{ uri: art }} style={{ width: '100%', height: '100%' }} />
+        ) : (
+            <Ionicons name="musical-notes" size={24} color="#6b7280" />
+        )}
+        <View style={{ position: 'absolute', bottom: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
+            <Text style={{ color: '#d1d5db', fontSize: 9, fontWeight: '700' }}>DIGI</Text>
+        </View>
+    </View>
+));
+
+const CollectionItemRow = React.memo(({ 
+    item, viewMode, isMyCollection, onEdit, onRemove, onSpin 
+}: { 
+    item: CollectionItem, 
+    viewMode: 'grid' | 'list' | 'shelf', 
+    isMyCollection: boolean,
+    onEdit: (item: CollectionItem) => void,
+    onRemove: (item: CollectionItem) => void,
+    onSpin: (item: CollectionItem) => void
+}) => {
+    const isGrid = viewMode === 'grid';
+    const isList = viewMode === 'list';
+    const isShelf = viewMode === 'shelf';
+
+    const renderMedia = () => {
+        const art = item.album_art_url;
+        if (!isShelf) {
+            if (art) {
+                return (
+                    <Image
+                        source={{ uri: art }}
+                        style={{
+                            width: isGrid ? '100%' : 80,
+                            aspectRatio: 1,
+                            borderRadius: isGrid ? 0 : 8,
+                        }}
+                    />
+                );
+            }
+            return (
+                <View
+                    style={{
+                        width: isGrid ? '100%' : 80,
+                        aspectRatio: 1,
+                        backgroundColor: '#1f2937',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        borderRadius: isGrid ? 0 : 8,
+                    }}
+                >
+                    <FontAwesome5
+                        name={MEDIA_TYPES.find(t => t.key === item.media_type)?.icon || 'music'}
+                        size={isGrid ? 40 : 24}
+                        color="#4b5563"
+                    />
+                </View>
+            );
+        }
+
+        switch (item.media_type) {
+            case 'vinyl': return <VinylMedia art={art} />;
+            case 'cd': return <CDMedia art={art} />;
+            case 'cassette': return <CassetteMedia art={art} />;
+            default: return <DigitalMedia art={art} />;
+        }
+    };
+
+    return (
+        <TouchableOpacity
+            onPress={isMyCollection ? () => onEdit(item) : undefined}
+            onLongPress={isMyCollection ? () => onRemove(item) : undefined}
+            activeOpacity={isMyCollection ? 0.2 : 1}
+            style={{
+                flex: isGrid || isShelf ? 1 : undefined,
+                margin: isGrid ? 6 : (isShelf ? 0 : 6),
+                backgroundColor: isShelf ? 'transparent' : '#1c1c1e',
+                borderRadius: isShelf ? 0 : 12,
+                overflow: isShelf ? 'visible' : 'hidden',
+                flexDirection: isGrid || isShelf ? 'column' : 'row',
+                padding: isGrid ? 0 : (isShelf ? 12 : 8),
+                paddingBottom: isShelf ? 24 : (isGrid ? 0 : 8),
+                alignItems: isGrid ? 'stretch' : 'center',
+                minHeight: isShelf ? 170 : undefined,
+            }}
+        >
+            {isShelf ? (
+                <View style={{
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 0.6,
+                    shadowRadius: 8,
+                    elevation: 10,
+                    marginBottom: 12,
+                    marginTop: 4,
+                }}>
+                    {renderMedia()}
+                </View>
+            ) : renderMedia()}
+
+            <View style={{ padding: isShelf ? 2 : 12, flex: 1, justifyContent: isShelf ? 'flex-start' : 'center', alignItems: isShelf ? 'center' : 'stretch', marginTop: isShelf ? 4 : 0 }}>
+                <Text style={{ color: isShelf ? '#d1d5db' : 'white', fontWeight: '600', fontSize: isShelf ? 10 : 13, textAlign: isShelf ? 'center' : 'left' }} numberOfLines={1}>
+                    {item.album_title}
+                </Text>
+                {!isShelf && (
+                    <Text style={{ color: Colors.primary, fontSize: 11, marginTop: 2, textAlign: 'left' }} numberOfLines={1}>
+                        {item.artist}
+                    </Text>
+                )}
+                {!isShelf && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                        <View style={{ backgroundColor: 'rgba(250,36,60,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                            <Text style={{ color: Colors.primary, fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                {MEDIA_TYPES.find(t => t.key === item.media_type)?.label}
+                            </Text>
+                        </View>
+                        {item.condition && (
+                            <Text style={{ color: '#6b7280', fontSize: 10 }}>{item.condition}</Text>
+                        )}
+                    </View>
+                )}
+                {isList && item.purchase_date && (
+                    <Text style={{ color: '#6b7280', fontSize: 10, marginTop: 4 }}>
+                        <Ionicons name="calendar-outline" size={10} color="#6b7280" /> {new Date(item.purchase_date).toLocaleDateString()}
+                    </Text>
+                )}
+                {isList && item.notes && (
+                    <Text style={{ color: '#9ca3af', fontSize: 10, marginTop: 4, fontStyle: 'italic' }} numberOfLines={2}>
+                        {item.notes}
+                    </Text>
+                )}
+            </View>
+
+            {isMyCollection && !isGrid && !isShelf && (
+                <TouchableOpacity onPress={() => onSpin(item)} style={{ padding: 16 }}>
+                    <FontAwesome5 name="compact-disc" size={24} color="#10B981" />
+                </TouchableOpacity>
+            )}
+
+            {isShelf && (
+                <View
+                    style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 16,
+                        backgroundColor: '#3d2b1f',
+                        borderTopWidth: 2,
+                        borderTopColor: '#5c4033',
+                    }}
+                >
+                    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                    <View style={{ height: 2, backgroundColor: 'rgba(0,0,0,0.2)' }} />
+                </View>
+            )}
+        </TouchableOpacity>
+    );
+});
 
 export default function CollectionScreen({ navigation, route }: any) {
     const insets = useSafeAreaInsets();
@@ -55,7 +346,16 @@ export default function CollectionScreen({ navigation, route }: any) {
     const [scanned, setScanned] = useState(false);
     
     // View state
-    const [isGridView, setIsGridView] = useState(true);
+    const [viewMode, setViewMode] = useState<'grid' | 'list' | 'shelf'>('grid');
+    const [smartShelf, setSmartShelf] = useState<'all' | 'recent' | 'top-artist' | 'mint' | 'needs-notes'>('all');
+    const [discographyLoading, setDiscographyLoading] = useState(false);
+    const [discographyProgress, setDiscographyProgress] = useState<{
+        artist: string;
+        totalKnown: number;
+        ownedCount: number;
+        missingAlbums: MusicSearchResult[];
+    } | null>(null);
+    const [inspectModalVisible, setInspectModalVisible] = useState(false);
 
     const load = useCallback(async (isRefresh = false) => {
         if (isRefresh) setRefreshing(true);
@@ -90,6 +390,86 @@ export default function CollectionScreen({ navigation, route }: any) {
 
         return () => clearTimeout(delayDebounceFn);
     }, [searchQuery]);
+
+    const topArtistName = useMemo(() => {
+        if (stats?.top_artist) return stats.top_artist;
+        if (!items.length) return null;
+        const artistCounts = items.reduce<Record<string, number>>((acc, item) => {
+            const key = (item.artist || '').trim();
+            if (!key) return acc;
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+        }, {});
+        const top = Object.entries(artistCounts).sort((a, b) => b[1] - a[1])[0];
+        return top?.[0] ?? null;
+    }, [items, stats?.top_artist]);
+
+    const normalizeAlbumTitle = (title: string) =>
+        (title || '')
+            .toLowerCase()
+            .replace(/\([^)]*\)/g, '')
+            .replace(/\[[^\]]*\]/g, '')
+            .replace(/\b(deluxe|expanded|remaster(ed)?|anniversary|edition|version)\b/g, '')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+
+    const isLikelySingleOrEP = (albumTitle: string) => {
+        const name = (albumTitle || '').toLowerCase().trim();
+        return name.includes('single') || /\bep\b/.test(name);
+    };
+
+    const loadDiscographyProgress = useCallback(async () => {
+        if (!topArtistName || !items.length) {
+            setDiscographyProgress(null);
+            return;
+        }
+
+        setDiscographyLoading(true);
+        try {
+            const res = await musicApi.searchAlbums(topArtistName, true);
+            const results = (Array.isArray(res.data) ? res.data : []).filter(r => !isLikelySingleOrEP(r.album));
+
+            const artistOwned = items.filter(
+                i => (i.artist || '').toLowerCase().trim() === topArtistName.toLowerCase().trim()
+            );
+
+            const ownedAlbumKeys = new Set(
+                artistOwned
+                    .map(i => normalizeAlbumTitle(i.album_title))
+                    .filter(Boolean)
+            );
+
+            const seen = new Set<string>();
+            const catalog = results.filter(r => {
+                const key = normalizeAlbumTitle(r.album);
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+
+            const missingAlbums = catalog.filter(r => !ownedAlbumKeys.has(normalizeAlbumTitle(r.album))).slice(0, 8);
+            const ownedKnown = catalog.reduce((count, album) => {
+                const key = normalizeAlbumTitle(album.album);
+                return count + (ownedAlbumKeys.has(key) ? 1 : 0);
+            }, 0);
+
+            setDiscographyProgress({
+                artist: topArtistName,
+                totalKnown: catalog.length,
+                ownedCount: ownedKnown,
+                missingAlbums,
+            });
+        } catch (err) {
+            console.error('Failed to load discography progress:', err);
+            setDiscographyProgress(null);
+        } finally {
+            setDiscographyLoading(false);
+        }
+    }, [items, topArtistName]);
+
+    useEffect(() => {
+        loadDiscographyProgress();
+    }, [loadDiscographyProgress]);
 
     const handleSearch = async () => {
         if (!searchQuery.trim()) return;
@@ -239,7 +619,49 @@ export default function CollectionScreen({ navigation, route }: any) {
         }
     };
 
-    const filteredItems = filterType === 'all' ? items : items.filter(i => i.media_type === filterType);
+    const mediaFilteredItems = filterType === 'all' ? items : items.filter(i => i.media_type === filterType);
+
+    const smartFilteredItems = useMemo(() => {
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(now.getDate() - 30);
+
+        if (smartShelf === 'recent') {
+            return mediaFilteredItems.filter(item => {
+                const created = new Date(item.created_at);
+                return !Number.isNaN(created.getTime()) && created >= thirtyDaysAgo;
+            });
+        }
+
+        if (smartShelf === 'top-artist' && topArtistName) {
+            const target = topArtistName.toLowerCase().trim();
+            return mediaFilteredItems.filter(item => (item.artist || '').toLowerCase().trim() === target);
+        }
+
+        if (smartShelf === 'mint') {
+            return mediaFilteredItems.filter(item => {
+                const c = (item.condition || '').toLowerCase();
+                return c.includes('mint');
+            });
+        }
+
+        if (smartShelf === 'needs-notes') {
+            return mediaFilteredItems.filter(item => !(item.notes || '').trim());
+        }
+
+        return mediaFilteredItems;
+    }, [mediaFilteredItems, smartShelf, topArtistName]);
+
+    const renderCollectionItem = useCallback(({ item }: { item: CollectionItem }) => (
+        <CollectionItemRow 
+            item={item} 
+            viewMode={viewMode} 
+            isMyCollection={isMyCollection} 
+            onEdit={handleEditItem}
+            onRemove={handleRemove}
+            onSpin={handleSpin}
+        />
+    ), [viewMode, isMyCollection, handleEditItem, handleRemove, handleSpin]);
 
     return (
         <View style={{ flex: 1, backgroundColor: '#000' }}>
@@ -252,7 +674,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                     borderBottomColor: 'rgba(255,255,255,0.1)',
                 }}
             >
-                <View style={{ paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     {!isMyCollection && (
                         <TouchableOpacity
                             onPress={() => navigation.goBack()}
@@ -262,22 +684,62 @@ export default function CollectionScreen({ navigation, route }: any) {
                         </TouchableOpacity>
                     )}
                     <View style={{ flex: 1 }}>
-                        <Text style={{ color: 'white', fontWeight: '700', fontSize: isMyCollection ? 34 : 24, letterSpacing: -0.5 }}>
+                        <Text style={{ color: 'white', fontWeight: '700', fontSize: isMyCollection ? 30 : 22, letterSpacing: -0.4 }}>
                             {isMyCollection ? 'Collection' : `${username}'s Collection`}
                         </Text>
                     </View>
                     <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                         <TouchableOpacity
-                            onPress={() => setIsGridView(!isGridView)}
+                            onPress={() =>
+                                navigation.navigate('ArtistProgress', {
+                                    userId: viewingUserId,
+                                    username: isMyCollection ? user?.username : username,
+                                })
+                            }
                             style={{
                                 backgroundColor: 'rgba(255,255,255,0.1)',
                                 borderRadius: 20,
-                                paddingHorizontal: 12,
+                                paddingHorizontal: 11,
                                 paddingVertical: 8,
                             }}
                         >
-                            <Ionicons name={isGridView ? "list" : "grid"} size={20} color="white" />
+                            <Ionicons name="stats-chart" size={16} color="white" />
                         </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20, padding: 3 }}>
+                            <TouchableOpacity
+                                onPress={() => setViewMode('grid')}
+                                style={{
+                                    paddingHorizontal: 9,
+                                    paddingVertical: 6,
+                                    borderRadius: 16,
+                                    backgroundColor: viewMode === 'grid' ? 'rgba(255,255,255,0.22)' : 'transparent',
+                                }}
+                            >
+                                <Ionicons name="grid" size={16} color="white" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => setViewMode('list')}
+                                style={{
+                                    paddingHorizontal: 9,
+                                    paddingVertical: 6,
+                                    borderRadius: 16,
+                                    backgroundColor: viewMode === 'list' ? 'rgba(255,255,255,0.22)' : 'transparent',
+                                }}
+                            >
+                                <Ionicons name="list" size={16} color="white" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => setViewMode('shelf')}
+                                style={{
+                                    paddingHorizontal: 9,
+                                    paddingVertical: 6,
+                                    borderRadius: 16,
+                                    backgroundColor: viewMode === 'shelf' ? 'rgba(255,255,255,0.22)' : 'transparent',
+                                }}
+                            >
+                                <Ionicons name="albums" size={16} color="white" />
+                            </TouchableOpacity>
+                        </View>
                         {isMyCollection && (
                             <TouchableOpacity
                                 onPress={() => setAddModalVisible(true)}
@@ -294,135 +756,24 @@ export default function CollectionScreen({ navigation, route }: any) {
                     </View>
                 </View>
 
-                {/* Collection Stats */}
-                {stats && stats.total > 0 && (
-                    <View style={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 4 }}>
-                        <View style={{ flexDirection: 'row', backgroundColor: '#111', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#222' }}>
-                            <View style={{ flex: 1, alignItems: 'center' }}>
-                                <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Total</Text>
-                                <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{stats.total}</Text>
-                            </View>
-                            <View style={{ width: 1, backgroundColor: '#333', marginHorizontal: 8 }} />
-                            <View style={{ flex: 1, alignItems: 'center' }}>
-                                <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Vinyls</Text>
-                                <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{stats.vinyl_count}</Text>
-                            </View>
-                            <View style={{ width: 1, backgroundColor: '#333', marginHorizontal: 8 }} />
-                            <View style={{ flex: 1, alignItems: 'center' }}>
-                                <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>CDs</Text>
-                                <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{stats.cd_count}</Text>
-                            </View>
-                        </View>
-                        {stats.top_artist && (
-                            <Text style={{ color: '#9ca3af', fontSize: 12, marginTop: 10, textAlign: 'center' }}>
-                                Top Artist: <Text style={{ color: Colors.primary, fontWeight: '600' }}>{stats.top_artist}</Text>
-                            </Text>
-                        )}
-                    </View>
-                )}
-
-                {/* Filter tabs */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 0 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, gap: 8 }}>
-                    <TouchableOpacity
-                        onPress={() => setFilterType('all')}
-                        style={{
-                            paddingHorizontal: 14,
-                            paddingVertical: 7,
-                            borderRadius: 18,
-                            backgroundColor: filterType === 'all' ? Colors.primary : 'rgba(255,255,255,0.1)',
-                        }}
-                    >
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>
-                            All ({items.length})
-                        </Text>
-                    </TouchableOpacity>
-                    {MEDIA_TYPES.map(type => {
-                        const count = items.filter(i => i.media_type === type.key).length;
-                        return (
-                            <TouchableOpacity
-                                key={type.key}
-                                onPress={() => setFilterType(type.key)}
-                                style={{
-                                    paddingHorizontal: 14,
-                                    paddingVertical: 7,
-                                    borderRadius: 18,
-                                    backgroundColor: filterType === type.key ? Colors.primary : 'rgba(255,255,255,0.1)',
-                                }}
-                            >
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>
-                                    {type.label} ({count})
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </ScrollView>
             </View>
 
                         {/* Collection Grid */}
             <FlatList
-                key={isGridView ? "grid" : "list"}
-                data={filteredItems}
-                numColumns={isGridView ? 2 : 1}
+                key={viewMode}
+                data={smartFilteredItems}
+                numColumns={viewMode === 'grid' ? 2 : viewMode === 'shelf' ? 3 : 1}
                 keyExtractor={(item) => String(item.id)}
-                renderItem={({ item }) => (
-                    <TouchableOpacity
-                        onPress={isMyCollection ? () => handleEditItem(item) : undefined}
-                        onLongPress={isMyCollection ? () => handleRemove(item) : undefined}
-                        activeOpacity={isMyCollection ? 0.2 : 1}
-                        style={{
-                            flex: 1,
-                            margin: 6,
-                            backgroundColor: "#1c1c1e",
-                            borderRadius: 12,
-                            overflow: "hidden",
-                            flexDirection: isGridView ? "column" : "row",
-                            padding: isGridView ? 0 : 8,
-                            alignItems: isGridView ? "stretch" : "center",
-                        }}
-                    >
-                        {item.album_art_url ? (
-                            <Image source={{ uri: item.album_art_url }} style={{ width: isGridView ? "100%" : 80, aspectRatio: 1, borderRadius: isGridView ? 0 : 8 }} />
-                        ) : (
-                            <View style={{ width: isGridView ? "100%" : 80, aspectRatio: 1, backgroundColor: "#1f2937", justifyContent: "center", alignItems: "center", borderRadius: isGridView ? 0 : 8 }}>
-                                <FontAwesome5 name={MEDIA_TYPES.find(t => t.key === item.media_type)?.icon || "music"} size={isGridView ? 40 : 24} color="#4b5563" />
-                            </View>
-                        )}
-                        <View style={{ padding: 12, flex: 1, justifyContent: "center" }}>
-                            <Text style={{ color: "white", fontWeight: "600", fontSize: 13 }} numberOfLines={1}>
-                                {item.album_title}
-                            </Text>
-                            <Text style={{ color: Colors.primary, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-                                {item.artist}
-                            </Text>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
-                                <View style={{ backgroundColor: "rgba(250,36,60,0.15)", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
-                                    <Text style={{ color: Colors.primary, fontSize: 9, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                                        {MEDIA_TYPES.find(t => t.key === item.media_type)?.label}
-                                    </Text>
-                                </View>
-                                {item.condition && (
-                                    <Text style={{ color: "#6b7280", fontSize: 10 }}>{item.condition}</Text>
-                                )}
-                            </View>
-                            {!isGridView && item.purchase_date && (
-                                <Text style={{ color: "#6b7280", fontSize: 10, marginTop: 4 }}>
-                                    <Ionicons name="calendar-outline" size={10} color="#6b7280" /> {new Date(item.purchase_date).toLocaleDateString()}
-                                </Text>
-                            )}
-                            {!isGridView && item.notes && (
-                                <Text style={{ color: "#9ca3af", fontSize: 10, marginTop: 4, fontStyle: "italic" }} numberOfLines={2}>
-                                    {item.notes}
-                                </Text>
-                            )}
-                        </View>
-                        {isMyCollection && !isGridView && (
-                            <TouchableOpacity onPress={() => handleSpin(item)} style={{ padding: 16 }}>
-                                <FontAwesome5 name="compact-disc" size={24} color="#10B981" />
-                            </TouchableOpacity>
-                        )}
-                    </TouchableOpacity>
-                )}
-                contentContainerStyle={{ paddingTop: 12, paddingBottom: 100, paddingHorizontal: 6 }}
+                renderItem={renderCollectionItem}
+                contentContainerStyle={{ 
+                    paddingBottom: 100, 
+                    paddingHorizontal: viewMode === 'shelf' ? 0 : 6,
+                    backgroundColor: viewMode === 'shelf' ? '#120d0b' : 'transparent'
+                }}
+                initialNumToRender={12}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                removeClippedSubviews={Platform.OS === 'android'}
                 showsVerticalScrollIndicator={false}
                 refreshControl={
                     <RefreshControl
@@ -430,6 +781,168 @@ export default function CollectionScreen({ navigation, route }: any) {
                         onRefresh={() => load(true)}
                         tintColor={Colors.primary}
                     />
+                }
+                ListHeaderComponent={
+                    <>
+                        {/* Collection Stats */}
+                        {stats && stats.total > 0 && (
+                            <View style={{ paddingHorizontal: 10, paddingBottom: 12, paddingTop: 10 }}>
+                                <View style={{ flexDirection: 'row', backgroundColor: '#111', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#222' }}>
+                                    <View style={{ flex: 1, alignItems: 'center' }}>
+                                        <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Total</Text>
+                                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{stats.total}</Text>
+                                    </View>
+                                    <View style={{ width: 1, backgroundColor: '#333', marginHorizontal: 8 }} />
+                                    <View style={{ flex: 1, alignItems: 'center' }}>
+                                        <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Vinyls</Text>
+                                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{stats.vinyl_count}</Text>
+                                    </View>
+                                    <View style={{ width: 1, backgroundColor: '#333', marginHorizontal: 8 }} />
+                                    <View style={{ flex: 1, alignItems: 'center' }}>
+                                        <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>CDs</Text>
+                                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{stats.cd_count}</Text>
+                                    </View>
+                                </View>
+                                {stats.top_artist && (
+                                    <Text style={{ color: '#9ca3af', fontSize: 12, marginTop: 10, textAlign: 'center' }}>
+                                        Top Artist: <Text style={{ color: Colors.primary, fontWeight: '600' }}>{stats.top_artist}</Text>
+                                    </Text>
+                                )}
+                            </View>
+                        )}
+
+                        {/* Filter tabs */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 0 }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 12, gap: 8 }}>
+                            <TouchableOpacity
+                                onPress={() => setFilterType('all')}
+                                style={{
+                                    paddingHorizontal: 14,
+                                    paddingVertical: 7,
+                                    borderRadius: 18,
+                                    backgroundColor: filterType === 'all' ? Colors.primary : 'rgba(255,255,255,0.1)',
+                                }}
+                            >
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>
+                                    All ({items.length})
+                                </Text>
+                            </TouchableOpacity>
+                            {MEDIA_TYPES.map(type => {
+                                const count = items.filter(i => i.media_type === type.key).length;
+                                return (
+                                    <TouchableOpacity
+                                        key={type.key}
+                                        onPress={() => setFilterType(type.key)}
+                                        style={{
+                                            paddingHorizontal: 14,
+                                            paddingVertical: 7,
+                                            borderRadius: 18,
+                                            backgroundColor: filterType === type.key ? Colors.primary : 'rgba(255,255,255,0.1)',
+                                        }}
+                                    >
+                                        <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>
+                                            {type.label} ({count})
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+
+                        {/* Smart Shelves */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 12, gap: 8 }}>
+                            {[
+                                { key: 'all', label: `All (${mediaFilteredItems.length})` },
+                                { key: 'recent', label: 'Recent Finds' },
+                                { key: 'top-artist', label: topArtistName ? `Top Artist: ${topArtistName}` : 'Top Artist' },
+                                { key: 'mint', label: 'Mint/Near Mint' },
+                                { key: 'needs-notes', label: 'Needs Notes' },
+                            ].map(shelf => (
+                                <TouchableOpacity
+                                    key={shelf.key}
+                                    onPress={() => setSmartShelf(shelf.key as 'all' | 'recent' | 'top-artist' | 'mint' | 'needs-notes')}
+                                    style={{
+                                        paddingHorizontal: 14,
+                                        paddingVertical: 7,
+                                        borderRadius: 18,
+                                        backgroundColor: smartShelf === shelf.key ? '#fff' : 'rgba(255,255,255,0.08)',
+                                    }}
+                                >
+                                    <Text style={{ fontSize: 12, fontWeight: '700', color: smartShelf === shelf.key ? '#111' : '#fff' }}>
+                                        {shelf.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+
+                        {/* Complete This Artist Discography */}
+                        {!!discographyProgress && (
+                            <View style={{ paddingHorizontal: 10, paddingBottom: 14 }}>
+                                <View style={{ backgroundColor: '#101014', borderRadius: 14, borderWidth: 1, borderColor: '#23232a', padding: 14 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <View style={{ flex: 1, paddingRight: 12 }}>
+                                            <Text style={{ color: '#d1d5db', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                                                Complete This Artist
+                                            </Text>
+                                            <Text style={{ color: 'white', fontSize: 17, fontWeight: '700', marginTop: 2 }} numberOfLines={1}>
+                                                {discographyProgress.artist}
+                                            </Text>
+                                            <Text style={{ color: '#9ca3af', fontSize: 12, marginTop: 4 }}>
+                                                {discographyProgress.ownedCount}/{discographyProgress.totalKnown} albums in your collection
+                                            </Text>
+                                        </View>
+                                        <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(250,36,60,0.18)', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Text style={{ color: Colors.primary, fontWeight: '800', fontSize: 16 }}>
+                                                {discographyProgress.totalKnown > 0
+                                                    ? `${Math.round((discographyProgress.ownedCount / discographyProgress.totalKnown) * 100)}%`
+                                                    : '0%'}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    {!!discographyProgress.missingAlbums.length && (
+                                        <>
+                                            <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 12, marginBottom: 8 }}>
+                                                Missing picks
+                                            </Text>
+                                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                                                {discographyProgress.missingAlbums.map((album, idx) => (
+                                                    <View key={`${album.track_id}-${idx}`} style={{ width: 126 }}>
+                                                        <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                                                            {album.album_art_url ? (
+                                                                <Image source={{ uri: album.album_art_url }} style={{ width: '100%', aspectRatio: 1 }} />
+                                                            ) : (
+                                                                <View style={{ width: '100%', aspectRatio: 1, backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
+                                                                    <FontAwesome5 name="music" size={20} color="#4b5563" />
+                                                                </View>
+                                                            )}
+                                                            <View style={{ padding: 8 }}>
+                                                                <Text style={{ color: 'white', fontSize: 12, fontWeight: '600' }} numberOfLines={2}>
+                                                                    {album.album}
+                                                                </Text>
+                                                                {isMyCollection && (
+                                                                    <TouchableOpacity
+                                                                        onPress={() => handleAddToCollection(album, true)}
+                                                                        style={{ marginTop: 8, backgroundColor: Colors.primary, borderRadius: 8, paddingVertical: 6, alignItems: 'center' }}
+                                                                    >
+                                                                        <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>Add</Text>
+                                                                    </TouchableOpacity>
+                                                                )}
+                                                            </View>
+                                                        </View>
+                                                    </View>
+                                                ))}
+                                            </ScrollView>
+                                        </>
+                                    )}
+
+                                    {discographyLoading && (
+                                        <View style={{ marginTop: 10, alignItems: 'center' }}>
+                                            <ActivityIndicator color={Colors.primary} size="small" />
+                                        </View>
+                                    )}
+                                </View>
+                            </View>
+                        )}
+                    </>
                 }
                 ListEmptyComponent={
                     loading ? (
@@ -440,11 +953,11 @@ export default function CollectionScreen({ navigation, route }: any) {
                         <View style={{ paddingVertical: 60, alignItems: "center", paddingHorizontal: 40 }}>
                             <FontAwesome5 name="record-vinyl" size={64} color="#374151" />
                             <Text style={{ color: "#6b7280", fontSize: 16, marginTop: 16, textAlign: "center" }}>
-                                {isMyCollection ? "Your collection is empty" : "This collection is empty"}
+                                {isMyCollection ? "No matches in this shelf yet" : "This collection is empty"}
                             </Text>
                             {isMyCollection && (
                                 <Text style={{ color: "#4b5563", fontSize: 13, marginTop: 8, textAlign: "center" }}>
-                                    Tap + to add your first album
+                                    {items.length ? "Try another smart shelf or media filter" : "Tap + to add your first album"}
                                 </Text>
                             )}
                         </View>
@@ -666,13 +1179,28 @@ export default function CollectionScreen({ navigation, route }: any) {
                                     <Text style={{ color: Colors.primary, fontSize: 14, marginTop: 4 }}>
                                         {editingItem.artist}
                                     </Text>
-                                    <TouchableOpacity 
-                                        onPress={() => handleSpin(editingItem)}
-                                        style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', backgroundColor: '#10B981', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}
-                                    >
-                                        <Ionicons name="disc" size={20} color="white" style={{ marginRight: 8 }} />
-                                        <Text style={{ color: 'white', fontWeight: '600' }}>Spin to Feed</Text>
-                                    </TouchableOpacity>
+                                    
+                                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+                                        <TouchableOpacity 
+                                            onPress={() => handleSpin(editingItem)}
+                                            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#10B981', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 }}
+                                        >
+                                            <Ionicons name="disc" size={20} color="white" style={{ marginRight: 8 }} />
+                                            <Text style={{ color: 'white', fontWeight: '600' }}>Spin to Feed</Text>
+                                        </TouchableOpacity>
+                                        
+                                        {(editingItem.media_type === 'cd' || editingItem.media_type === 'vinyl') && (
+                                            <TouchableOpacity 
+                                                onPress={() => setInspectModalVisible(true)}
+                                                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                                            >
+                                                <Ionicons name="eye-outline" size={20} color="white" style={{ marginRight: 8 }} />
+                                                <Text style={{ color: 'white', fontWeight: '600' }}>
+                                                    {editingItem.media_type === 'cd' ? 'View Disc' : 'View Record'}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
                                 </View>
 
                                 {/* Media Type */}
@@ -820,6 +1348,34 @@ export default function CollectionScreen({ navigation, route }: any) {
                             </>
                         )}
                     </ScrollView>
+
+                    {/* Interactive CD Viewer Modal (Nested inside Edit Modal for correct layering) */}
+                    <Modal 
+                        visible={inspectModalVisible} 
+                        animationType="fade" 
+                        transparent={true}
+                        statusBarTranslucent={true}
+                        onRequestClose={() => setInspectModalVisible(false)}
+                    >
+                        {editingItem && (
+                            editingItem.media_type === 'cd' ? (
+                                <InteractiveCDView 
+                                    albumArt={editingItem.album_art_url}
+                                    albumTitle={editingItem.album_title}
+                                    artist={editingItem.artist}
+                                    onClose={() => setInspectModalVisible(false)}
+                                />
+                            ) : (
+                                <InteractiveVinylView 
+                                    albumArt={editingItem.album_art_url}
+                                    albumTitle={editingItem.album_title}
+                                    artist={editingItem.artist}
+                                    onClose={() => setInspectModalVisible(false)}
+                                />
+                            )
+                        )}
+                    </Modal>
+
                 </View>
                 </KeyboardAvoidingView>
             </Modal>
@@ -839,7 +1395,7 @@ export default function CollectionScreen({ navigation, route }: any) {
 
                     {!permission?.granted ? (
                         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 }}>
-                            <Ionicons name="camera-off" size={64} color="#4b5563" />
+                            <Ionicons name="camera" size={64} color="#4b5563" />
                             <Text style={{ color: 'white', fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
                                 Camera Permission Required
                             </Text>
@@ -898,3 +1454,4 @@ export default function CollectionScreen({ navigation, route }: any) {
         </View>
     );
 }
+

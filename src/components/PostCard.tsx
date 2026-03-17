@@ -1,11 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { TouchableOpacity, View, Text, Image, Animated, Share, StyleSheet } from 'react-native';
+import { TouchableOpacity, View, Text, Image, Animated, Share, StyleSheet, Linking, Alert } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { Post, PostType, ReactionType } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import { Colors } from '../theme';
 import { API_BASE_URL } from '../api/client';
+import { Layout, Surface } from '../theme/layout';
+import { AppChip, AppIconButton } from './ui/Primitives';
 
 // Helper to get full avatar URL
 const getAvatarUrl = (url: string | null | undefined): string => {
@@ -19,6 +21,7 @@ interface Props {
     onLike: (postId: number) => void;
     onComment: (post: Post) => void;
     onAuthorPress: (userId: number) => void;
+    onSaveToCollection?: (post: Post) => void;
     onQuickReact?: (postId: number, reaction: ReactionType) => void;
     onListenLater?: (post: Post) => void;
     onDelete?: (postId: number) => void;
@@ -30,6 +33,24 @@ const TYPE_CFG: Record<PostType, { label: string; icon: keyof typeof Ionicons.gl
     loved:       { label: 'Loved',       icon: 'heart',          color: Colors.primary },
     history:     { label: 'History',     icon: 'time-outline',   color: '#9ca3af' },
     spin:        { label: 'Spinning',    icon: 'disc',           color: '#10B981' },
+};
+
+type SourceService = 'spotify' | 'youtube' | 'apple' | 'external';
+
+const detectSourceService = (post: Post): SourceService | null => {
+    const haystack = `${post.spotify_url || ''} ${post.preview_url || ''}`.toLowerCase();
+    if (!haystack.trim()) return null;
+    if (haystack.includes('spotify')) return 'spotify';
+    if (haystack.includes('youtube') || haystack.includes('youtu.be')) return 'youtube';
+    if (haystack.includes('music.apple.com') || haystack.includes('apple')) return 'apple';
+    return 'external';
+};
+
+const SOURCE_CFG: Record<SourceService, { label: string; color: string }> = {
+    spotify: { label: 'Spotify', color: '#1DB954' },
+    youtube: { label: 'YouTube', color: '#FF0000' },
+    apple: { label: 'Apple Music', color: '#FC3A6E' },
+    external: { label: 'Source', color: '#60A5FA' },
 };
 
 const AVATAR_COLORS = ['#3B82F6', '#EC4899', '#10B981', '#6366F1', '#F59E0B'];
@@ -55,6 +76,7 @@ export default function PostCard({
     onLike,
     onComment,
     onAuthorPress,
+    onSaveToCollection,
     onQuickReact,
     onListenLater,
     onDelete,
@@ -93,7 +115,44 @@ export default function PostCard({
         } catch {}
     };
 
+    const handleOpenSource = async () => {
+        const url = post.spotify_url || post.preview_url;
+        if (!url) return;
+        try {
+            await Linking.openURL(url);
+        } catch {}
+    };
+
+    const openMoreActions = () => {
+        const actions: Array<{ text: string; onPress?: () => void; style?: 'default' | 'cancel' | 'destructive' }> = [];
+
+        if (post.spotify_url || post.preview_url) {
+            const service = detectSourceService(post);
+            actions.push({ text: service ? `Open in ${SOURCE_CFG[service].label}` : 'Open in Service', onPress: handleOpenSource });
+        }
+
+        if (onListenLater) {
+            actions.push({ text: 'Add to Listen Later', onPress: () => onListenLater(post) });
+        }
+
+        if (onQuickReact) {
+            actions.push({ text: 'React: On Repeat', onPress: () => onQuickReact(post.id, 'on_repeat') });
+            actions.push({ text: 'React: Saved', onPress: () => onQuickReact(post.id, 'saved') });
+            actions.push({ text: 'React: Crate Worthy', onPress: () => onQuickReact(post.id, 'crate_worthy') });
+            actions.push({ text: 'React: Skip', onPress: () => onQuickReact(post.id, 'skip') });
+        }
+
+        if (isOwn && onDelete) {
+            actions.push({ text: 'Delete Post', style: 'destructive', onPress: () => onDelete(post.id) });
+        }
+
+        actions.push({ text: 'Cancel', style: 'cancel' });
+
+        Alert.alert('Post Actions', 'Choose an action', actions);
+    };
+
     const cfg       = TYPE_CFG[post.post_type] ?? TYPE_CFG.loved;
+    const source    = detectSourceService(post);
     const avatarBg  = AVATAR_COLORS[post.author.id % AVATAR_COLORS.length];
     const timeAgo   = formatDistanceToNow(new Date(post.created_at), { addSuffix: true });
     const isNowPlay = post.post_type === 'now_playing';
@@ -128,11 +187,9 @@ export default function PostCard({
                     <Text style={[s.badgeText, { color: cfg.color }]}>{cfg.label}</Text>
                 </View>
 
-                {isOwn && onDelete && (
-                    <TouchableOpacity onPress={() => onDelete(post.id)} style={{ padding: 6, marginLeft: 6 }}>
-                        <Ionicons name="ellipsis-horizontal" size={18} color="#4b5563" />
-                    </TouchableOpacity>
-                )}
+                <AppIconButton onPress={openMoreActions} style={{ marginLeft: 4 }}>
+                    <Ionicons name="ellipsis-horizontal" size={18} color="#4b5563" />
+                </AppIconButton>
             </View>
 
             {/* ── Album art — full-width square ──────────────────────── */}
@@ -191,6 +248,12 @@ export default function PostCard({
                 ) : null}
             </View>
 
+            {source && (
+                <View style={{ paddingHorizontal: Layout.space[3], paddingBottom: Layout.space[2] }}>
+                    <AppChip label={SOURCE_CFG[source].label} color={SOURCE_CFG[source].color} />
+                </View>
+            )}
+
             {/* ── Caption ────────────────────────────────────────────── */}
             {post.caption ? (
                 <View style={s.captionRow}>
@@ -224,19 +287,9 @@ export default function PostCard({
                     <Ionicons name="paper-plane-outline" size={20} color="#4b5563" />
                 </TouchableOpacity>
 
-                {onQuickReact && (
-                    <TouchableOpacity onPress={() => onQuickReact(post.id, 'on_repeat')} style={s.actionBtn}>
-                        <Ionicons
-                            name="repeat"
-                            size={20}
-                            color={post.my_reactions?.includes('on_repeat') ? '#10B981' : '#4b5563'}
-                        />
-                    </TouchableOpacity>
-                )}
-
-                {onListenLater && (
-                    <TouchableOpacity onPress={() => onListenLater(post)} style={s.actionBtn}>
-                        <Ionicons name="time-outline" size={20} color="#4b5563" />
+                {onSaveToCollection && (
+                    <TouchableOpacity onPress={() => onSaveToCollection(post)} style={s.actionBtn}>
+                        <Ionicons name="albums-outline" size={20} color="#4b5563" />
                     </TouchableOpacity>
                 )}
 
@@ -251,24 +304,24 @@ export default function PostCard({
 const s = StyleSheet.create({
     card: {
         marginHorizontal: 0,
-        marginBottom: 12,
+        marginBottom: Layout.space[3],
         borderRadius: 0,
-        backgroundColor: '#1c1c1e',
-        borderBottomWidth: 0.5,
-        borderBottomColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: Surface.card,
+        borderBottomWidth: Layout.border.hairline,
+        borderBottomColor: Surface.borderStrong,
         overflow: 'hidden',
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        paddingBottom: 10,
+        paddingHorizontal: Layout.space[4],
+        paddingTop: Layout.space[3],
+        paddingBottom: Layout.space[2],
     },
     avatar: {
         width: 32,
         height: 32,
-        borderRadius: 16,
+        borderRadius: Layout.radius.pill,
         overflow: 'hidden',
     },
     avatarLetter: {
@@ -290,11 +343,11 @@ const s = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        paddingHorizontal: 8,
+        paddingHorizontal: Layout.space[2],
         paddingVertical: 4,
-        borderRadius: 100,
+        borderRadius: Layout.radius.pill,
         borderWidth: 1,
-        marginLeft: 8,
+        marginLeft: Layout.space[2],
     },
     badgeText: {
         fontSize: 10,
@@ -317,15 +370,15 @@ const s = StyleSheet.create({
     },
     playPill: {
         position: 'absolute',
-        bottom: 14,
-        right: 14,
+        bottom: Layout.space[3],
+        right: Layout.space[3],
         flexDirection: 'row',
         alignItems: 'center',
         gap: 5,
-        paddingHorizontal: 12,
+        paddingHorizontal: Layout.space[3],
         paddingVertical: 6,
         backgroundColor: 'rgba(0,0,0,0.58)',
-        borderRadius: 100,
+        borderRadius: Layout.radius.pill,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.18)',
     },
@@ -337,9 +390,9 @@ const s = StyleSheet.create({
     trackRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 14,
-        paddingTop: 13,
-        paddingBottom: 10,
+        paddingHorizontal: Layout.space[3],
+        paddingTop: Layout.space[3],
+        paddingBottom: Layout.space[2],
     },
     trackTitle: {
         color: 'white',
@@ -359,9 +412,9 @@ const s = StyleSheet.create({
     },
     genrePill: {
         backgroundColor: 'rgba(250,36,60,0.12)',
-        paddingHorizontal: 8,
+        paddingHorizontal: Layout.space[2],
         paddingVertical: 3,
-        borderRadius: 100,
+        borderRadius: Layout.radius.pill,
         borderWidth: 1,
         borderColor: 'rgba(250,36,60,0.28)',
     },
@@ -373,8 +426,8 @@ const s = StyleSheet.create({
         letterSpacing: 0.5,
     },
     captionRow: {
-        paddingHorizontal: 14,
-        paddingBottom: 12,
+        paddingHorizontal: Layout.space[3],
+        paddingBottom: Layout.space[3],
     },
     caption: {
         color: '#d1d5db',
@@ -384,11 +437,11 @@ const s = StyleSheet.create({
     actions: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 14,
-        paddingBottom: 14,
-        paddingTop: 10,
+        paddingHorizontal: Layout.space[3],
+        paddingBottom: Layout.space[3],
+        paddingTop: Layout.space[2],
         borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.06)',
+        borderTopColor: Surface.borderSoft,
         gap: 20,
     },
     actionBtn: {
