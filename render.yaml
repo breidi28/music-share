@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: music-share-backend
+    env: python
+    region: oregon
+    plan: free
+    # Build installs dependencies from the backend requirements file
+    buildCommand: pip install -r backend/requirements.txt
+    # Run Gunicorn using the shared config, which binds to $PORT
+    startCommand: gunicorn -c gunicorn.conf.py
+    envVars:
+      - key: PORT
+        value: "10000"
+      # Example: if you need CORS origins in production
+      # - key: CORS_ORIGINS
+      #   value: "https://musicsharebreidi.vercel.app"
