@@ -11,6 +11,10 @@ services:
     envVars:
       - key: PORT
         value: "10000"
-      # Example: if you need CORS origins in production
-      # - key: CORS_ORIGINS
-      #   value: "https://musicsharebreidi.vercel.app"
+      - key: CORS_ORIGINS
+        value: "https://musicsharebreidi.vercel.app"
+      - key: JWT_SECRET_KEY
+        value: "replace-with-a-strong-secret"
+      # If you use a managed DB, set DATABASE_URL in Render (Postgres/Redis/etc)
+      # - key: DATABASE_URL
+      #   value: "postgres://user:pass@host:5432/dbname"
