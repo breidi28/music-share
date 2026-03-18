@@ -49,6 +49,9 @@ else:
     
     app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{full_db_path}"
 
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-change-in-production')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Reduced from 30 days
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_recycle": 280,
@@ -57,6 +60,15 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
+
+# Root route for standard health checks (avoids 404 for bots/Render)
+@app.route('/', methods=['GET'])
+def index_health():
+    return jsonify({
+        'status': 'online',
+        'service': 'Music Share Backend',
+        'message': 'Welcome! Use /api/ to access endpoints.'
+    })
 
 # Basic liveness endpoints for hosting platform health checks
 @app.route('/api/', methods=['GET'])
