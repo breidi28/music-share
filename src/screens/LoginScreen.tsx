@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     KeyboardAvoidingView,
     Platform,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
+import api from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
 
@@ -20,6 +21,7 @@ export default function LoginScreen({ navigation }: any) {
     const [password, setPassword] = useState('');
     const [showPass, setShowPass] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [serverStatus, setServerStatus] = useState<'checking' | 'waking' | 'awake' | 'error'>('checking');
     const { login } = useAuthStore();
     const passwordRef = useRef<TextInput>(null);
 
@@ -45,6 +47,33 @@ export default function LoginScreen({ navigation }: any) {
         setLoading(false);
     };
 
+    useEffect(() => {
+        let isMounted = true;
+        
+        const checkServer = async () => {
+            // If it takes more than 1 second to respond, assume the free instance is waking up
+            const slowWakeTimeout = setTimeout(() => {
+                if (isMounted) {
+                    setServerStatus('waking');
+                }
+            }, 1000);
+            
+            try {
+                // Large timeout because cold start can take 50 seconds
+                await api.get('/health', { timeout: 60000 });
+                clearTimeout(slowWakeTimeout);
+                if (isMounted) setServerStatus('awake');
+            } catch (err) {
+                clearTimeout(slowWakeTimeout);
+                if (isMounted) setServerStatus('error');
+            }
+        };
+        
+        checkServer();
+        
+        return () => { isMounted = false; };
+    }, []);
+
     return (
         <KeyboardAvoidingView
             style={{ flex: 1, backgroundColor: 'black' }}
@@ -67,6 +96,27 @@ export default function LoginScreen({ navigation }: any) {
                         <Text className="text-white font-bold text-4xl">musicshare</Text>
                         <Text className="text-gray-500 text-base">Share what moves you.</Text>
                     </View>
+
+                    {/* Server Status Banner */}
+                    {(serverStatus === 'waking' || serverStatus === 'error') && (
+                        <View className={`mb-6 p-4 rounded-xl border flex-row items-center gap-3 ${serverStatus === 'error' ? 'bg-red-900/40 border-red-500/50' : 'bg-[#FA243C]/20 border-[#FA243C]/50'}`}>
+                            {serverStatus === 'waking' ? (
+                                <ActivityIndicator color="#FA243C" size="small" />
+                            ) : (
+                                <Ionicons name="warning" size={20} color="#ef4444" />
+                            )}
+                            <View style={{ flex: 1 }}>
+                                <Text className="text-white font-medium text-sm">
+                                    {serverStatus === 'waking' ? 'Waking up the server' : 'Server sleeping/down'}
+                                </Text>
+                                <Text className="text-gray-400 text-xs mt-1">
+                                    {serverStatus === 'waking' 
+                                        ? 'Since this is a free deployment, it may take up to 50 seconds to spin back up.' 
+                                        : 'Failed to reach the backend. Please try again later.'}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
 
                     {/* Form */}
                     <View className="flex-col gap-6">
