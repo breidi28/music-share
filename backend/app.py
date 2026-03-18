@@ -11,6 +11,11 @@ import re
 import json
 import time
 import threading
+import smtplib
+import ssl
+import random
+import string
+from email.message import EmailMessage
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -175,10 +180,10 @@ class User(db.Model):
             'bio': self.bio,
             'avatar_url': self.avatar_url,
             'favorite_genres': self.favorite_genres,
-            'followers_count': self.followers_list.count(),
-            'following_count': self.followed.count(),
-            'posts_count': len(self.posts),
-            'created_at': (self.created_at.isoformat() + 'Z' if self.created_at.tzinfo is None else self.created_at.isoformat()),
+            'followers_count': self.followers_list.count() if hasattr(self, 'followers_list') else 0,
+            'following_count': self.followed.count() if hasattr(self, 'followed') else 0,
+            'posts_count': len(self.posts) if hasattr(self, 'posts') else 0,
+            'created_at': (self.created_at.isoformat() + 'Z' if self.created_at and self.created_at.tzinfo is None else (self.created_at.isoformat() if self.created_at else None)),
             'has_spotify_linked': bool(self.spotify_access_token),
             'has_youtube_linked': bool(self.youtube_access_token),
             'has_apple_music_linked': bool(self.apple_music_user_token),
@@ -188,10 +193,14 @@ class User(db.Model):
             'collection_count': len(self.collection_items) if hasattr(self, 'collection_items') else 0,
         }
         if current_user_id:
-            current = db.session.get(User, current_user_id)
-            if current:
-                data['is_following'] = current.followed.filter(followers.c.followed_id == self.id).count() > 0
-            else:
+            try:
+                # Use simple query check to avoid session.get issues
+                if int(current_user_id) == self.id:
+                    data['is_following'] = False # cannot follow self usually
+                else:
+                    data['is_following'] = self.followers_list.filter(followers.c.follower_id == current_user_id).count() > 0
+            except Exception as e:
+                app.logger.error(f"Error calculating is_following: {e}")
                 data['is_following'] = False
         return data
 
@@ -537,12 +546,15 @@ def _ensure_phase0_schema() -> None:
                 conn.commit()
 
 
-with app.app_context():
-    try:
-        _ensure_phase0_schema()
-    except Exception as e:
-        app.logger.warning(f'Phase 0 schema ensure skipped: {str(e)}')
+class PasswordResetCode(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    code = db.Column(db.String(6), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
+    user = db.relationship('User')
 
 class CollectionItem(db.Model):
     """Physical media collection (vinyl, CD, cassette, etc.)."""
@@ -851,8 +863,9 @@ def login():
         return jsonify({'token': token, 'user': user.to_dict(current_user_id=user.id)}), 200
 
     except Exception as e:
-        app.logger.error(f'Login error: {str(e)}')
-        return jsonify({'error': 'Login failed'}), 500
+        import traceback
+        app.logger.error(f'Login error: {str(e)}\n{traceback.format_exc()}')
+        return jsonify({'error': f'Login failed: {str(e)}'}), 500
 
 
 @app.route('/api/auth/me', methods=['GET'])
@@ -3673,6 +3686,118 @@ scheduler.add_job(
     next_run_time=datetime.utcnow()
 )
 scheduler.start()
+
+
+def send_reset_email(to_email, reset_code):
+    smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+    smtp_port = int(os.getenv('SMTP_PORT', 465))
+    smtp_user = os.getenv('SMTP_USER')
+    smtp_pass = os.getenv('SMTP_PASSWORD')
+
+    if not smtp_user or not smtp_pass:
+        app.logger.warning(f"Email credentials not set. Would have sent code {reset_code} to {to_email}")
+        return True # Pretend it succeeded in dev
+
+    msg = EmailMessage()
+    msg.set_content(f"Your password reset code is: {reset_code}\n\nThis code will expire in 15 minutes.\n\nIf you did not request this, please ignore this email.")
+    msg['Subject'] = "Password Reset Code - musicshare"
+    msg['From'] = smtp_user
+    msg['To'] = to_email
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context) as server:
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        app.logger.error(f"Failed to send email to {to_email}: {e}")
+        return False
+
+@app.route('/api/auth/forgot-password', methods=['POST'])
+def forgot_password():
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
+        if not email:
+            return jsonify({'error': 'Email is required'}), 400
+
+        user = User.query.filter(User.email.ilike(email)).first()
+        if not user:
+            # Return success to prevent email enumeration attacks
+            return jsonify({'message': 'If an account exists, a code has been sent.'}), 200
+
+        # Generate a 6-digit code
+        reset_code = ''.join(random.choices(string.digits, k=6))
+        expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+        # Invalidate old unused codes
+        PasswordResetCode.query.filter_by(user_id=user.id, used=False).update({'used': True})
+
+        record = PasswordResetCode(user_id=user.id, code=reset_code, expires_at=expires)
+        db.session.add(record)
+        db.session.commit()
+
+        # Send it
+        success = send_reset_email(user.email, reset_code)
+        if not success:
+            return jsonify({'error': 'Failed to send email. Please try again later.'}), 500
+
+        return jsonify({'message': 'If an account exists, a code has been sent.'}), 200
+
+    except Exception as e:
+        app.logger.error(f"Forgot password error: {str(e)}")
+        return jsonify({'error': 'An internal error occurred'}), 500
+
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def reset_password():
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
+        code = data.get('code', '').strip()
+        new_password = data.get('new_password', '')
+
+        if not all([email, code, new_password]):
+            return jsonify({'error': 'Email, code, and new password are required'}), 400
+
+        user = User.query.filter(User.email.ilike(email)).first()
+        if not user:
+            return jsonify({'error': 'Invalid email or code'}), 400
+
+        # Find valid code
+        reset_record = PasswordResetCode.query.filter(
+            PasswordResetCode.user_id == user.id,
+            PasswordResetCode.code == code,
+            PasswordResetCode.used == False,
+            PasswordResetCode.expires_at > datetime.now(timezone.utc)
+        ).first()
+
+        if not reset_record:
+            return jsonify({'error': 'Invalid or expired code'}), 400
+
+        # Validate new password
+        is_valid, error_msg = validate_password(new_password)
+        if not is_valid:
+            return jsonify({'error': error_msg}), 400
+
+        # Apply reset
+        user.set_password(new_password)
+        reset_record.used = True
+        db.session.commit()
+
+        return jsonify({'message': 'Password successfully reset. You can now log in.'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Reset password error: {str(e)}")
+        return jsonify({'error': 'An internal error occurred'}), 500
+
+with app.app_context():
+    try:
+        _ensure_phase0_schema()
+    except Exception as e:
+        app.logger.warning(f'Phase 0 schema ensure skipped: {str(e)}')
 
 
 if __name__ == '__main__':
