@@ -769,6 +769,7 @@ def _get_or_generate_weekly_recap(user_id: int, week_start: datetime.date) -> We
 
 
 
+@app.route('/api/auth/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
