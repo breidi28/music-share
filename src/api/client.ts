@@ -6,7 +6,7 @@ import Toast from 'react-native-toast-message';
 
 // TODO: replace this with your actual Render service URL once deployed
 // Format: https://<your-service-name>.onrender.com/api
-const PROD_API_BASE_URL = 'https://music-share-backend.onrender.com/api';
+const PROD_API_BASE_URL = 'https://music-share-b4r8.onrender.com/api';
 const WEB_LOCAL_API_BASE_URL = 'http://127.0.0.1:5000/api';
 
 const getNativeDevApiBaseUrl = () => {
@@ -27,9 +27,8 @@ const getNativeDevApiBaseUrl = () => {
 
 const LOCAL_API_BASE_URL = Platform.OS === 'web' ? WEB_LOCAL_API_BASE_URL : getNativeDevApiBaseUrl();
 
-// Use EXPO_PUBLIC_API_URL when provided; otherwise default to local backend in dev.
-export const API_BASE_URL =
-    process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? LOCAL_API_BASE_URL : PROD_API_BASE_URL);
+// Force production logic
+export const API_BASE_URL = PROD_API_BASE_URL;
 
 const client = axios.create({
     baseURL: API_BASE_URL,

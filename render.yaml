@@ -4,10 +4,11 @@ services:
     env: python
     region: oregon
     plan: free
-    # Build installs dependencies from the backend requirements file
-    buildCommand: pip install -r backend/requirements.txt
-    # Run Gunicorn using the shared config, which binds to $PORT
-    startCommand: gunicorn -c gunicorn.conf.py
+    # Render will run all commands from the backend/ folder
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # gunicorn runs app:app directly since we're already inside backend/
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120
     envVars:
       - key: PORT
         value: "10000"
