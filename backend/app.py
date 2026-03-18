@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import inspect, text
@@ -1031,30 +1031,51 @@ def _refresh_spotify_live_cache_async(user_id: int):
             with _spotify_live_cache_lock:
                 _spotify_live_refreshing.discard(user_id)
 
-    threading.Thread(target=_worker, daemon=True).start()
-
-@app.route('/api/integrations/spotify/callback', methods=['POST'])
-@jwt_required()
+@app.route('/api/integrations/spotify/callback', methods=['GET', 'POST'])
 def spotify_callback():
+    """Handle Spotify OAuth callback. Supports both GET (direct redirect) and POST (frontend relay)."""
     try:
         if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+            # For GET requests, return a simple string error, for POST, jsonify
+            if request.method == 'GET':
+                return "Spotify integration not configured", 503
             return jsonify({'error': 'Spotify integration not configured'}), 503
 
-        current_user_id = int(get_jwt_identity())
-        user = db.get_or_404(User, current_user_id)
-        
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
+        # Check if it's a direct redirect (GET) or a frontend relay (POST)
+        if request.method == 'GET':
+            code = request.args.get('code')
+            state = request.args.get('state') # We expect the user_id in the state
+            if not state:
+                return "Missing state parameter (user_id required)", 400
+            user_id = int(state)
+            redirect_uri = f"{request.host_url.rstrip('/')}/api/integrations/spotify/callback"
+        else:
+            # For POST requests, jwt_required() is expected to be applied,
+            # but since it's a shared endpoint, we'll handle it manually.
+            # If it's a POST, we expect a JWT token.
+            try:
+                verify_jwt_in_request()
+                current_user_id = int(get_jwt_identity())
+            except Exception:
+                return jsonify({'error': 'Authentication required for POST callback'}), 401
+            
+            data = request.get_json() or {}
+            code = data.get('code')
+            user_id = current_user_id
+            redirect_uri = data.get('redirect_uri', SPOTIFY_REDIRECT_URI)
 
-        code = data.get('code')
         if not code:
+            if request.method == 'GET':
+                return "Authorization code is required", 400
             return jsonify({'error': 'Authorization code is required'}), 400
 
-        # Use the redirect_uri the frontend actually used (must match Spotify exactly)
-        redirect_uri = data.get('redirect_uri', SPOTIFY_REDIRECT_URI)
+        user = db.session.get(User, user_id)
+        if not user:
+            if request.method == 'GET':
+                return "User not found", 404
+            return jsonify({'error': 'User not found'}), 404
 
-        app.logger.info(f"[Spotify] Exchanging code for user {current_user_id}")
+        app.logger.info(f"[Spotify] Exchanging code for user {user_id} with redirect_uri: {redirect_uri}")
 
         auth_str = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
         b64_auth_str = base64.b64encode(auth_str.encode()).decode()
@@ -1076,7 +1097,9 @@ def spotify_callback():
         token_info = response.json()
         
         if 'error' in token_info:
-            app.logger.warning(f"Spotify error: {token_info.get('error')}")
+            app.logger.warning(f"Spotify error for user {user_id}: {token_info.get('error')}")
+            if request.method == 'GET':
+                return f"Failed to connect to Spotify: {token_info.get('error', 'unknown error')}", 400
             return jsonify({'error': 'Failed to connect to Spotify'}), 400
             
         user.spotify_access_token = token_info.get('access_token', '')
@@ -1087,11 +1110,13 @@ def spotify_callback():
         user.spotify_token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
         
         db.session.commit()
-        return jsonify({'message': 'Spotify linked successfully', 'user': user.to_dict(current_user_id)})
+
+        if request.method == 'GET':
+            # Redirect back to the mobile app
+            return "<script>window.location.href='musicshare://auth-success?service=spotify';</script>Please return to the app."
         
-    except requests.RequestException as e:
-        app.logger.error(f'Spotify API error: {str(e)}')
-        return jsonify({'error': 'Failed to connect to Spotify'}), 503
+        return jsonify({'message': 'Spotify linked successfully', 'user': user.to_dict(user_id)})
+        
     except Exception as e:
         app.logger.error(f'Spotify callback error: {str(e)}')
         db.session.rollback()
@@ -1339,19 +1364,33 @@ def _get_ytmusic_client(user):
         return None, str(e)
 
 
-@app.route('/api/integrations/youtube/callback', methods=['POST'])
-@jwt_required()
+@app.route('/api/integrations/youtube/callback', methods=['GET', 'POST'])
 def youtube_callback():
-    """Exchange Google OAuth code for YouTube access token."""
-    current_user_id = int(get_jwt_identity())
-    user = db.get_or_404(User, current_user_id)
-    
+    """Handle YouTube (Google) OAuth callback. Supports GET (direct) and POST (relay)."""
     try:
-        data = request.get_json()
-        code = data.get('code')
-        redirect_uri = data.get('redirect_uri', YOUTUBE_REDIRECT_URI)
+        # Check if it's a direct redirect (GET) or a frontend relay (POST)
+        if request.method == 'GET':
+            code = request.args.get('code')
+            state = request.args.get('state') # We expect the user_id in the state
+            if not state:
+                return "Missing state parameter (user_id required)", 400
+            user_id = int(state)
+            redirect_uri = f"{request.host_url.rstrip('/')}/api/integrations/youtube/callback"
+        else:
+            try:
+                verify_jwt_in_request()
+                current_user_id = int(get_jwt_identity())
+            except Exception:
+                return jsonify({'error': 'Authentication required'}), 401
+            
+            data = request.get_json() or {}
+            code = data.get('code')
+            user_id = current_user_id
+            redirect_uri = data.get('redirect_uri', YOUTUBE_REDIRECT_URI)
         
         if not code:
+            if request.method == 'GET':
+                return "Missing authorization code", 400
             return jsonify({'error': 'Missing authorization code'}), 400
             
         if not YOUTUBE_CLIENT_ID or not YOUTUBE_CLIENT_SECRET:
@@ -1374,9 +1413,15 @@ def youtube_callback():
         token_info = response.json()
         
         if 'error' in token_info:
-            app.logger.warning(f"YouTube error: {token_info.get('error')}")
+            app.logger.warning(f"YouTube error for user {user_id}: {token_info.get('error')}")
+            if request.method == 'GET':
+                return f"Failed to connect to YouTube: {token_info.get('error')}", 400
             return jsonify({'error': 'Failed to connect to YouTube Music'}), 400
             
+        user = db.session.get(User, user_id)
+        if not user:
+            return "User not found", 404
+
         user.youtube_access_token = token_info.get('access_token', '')
         if 'refresh_token' in token_info:
             user.youtube_refresh_token = token_info['refresh_token']
@@ -1385,11 +1430,16 @@ def youtube_callback():
         user.youtube_token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
         
         db.session.commit()
-        return jsonify({'message': 'YouTube Music linked successfully', 'user': user.to_dict(current_user_id)})
+
+        if request.method == 'GET':
+            return "<script>window.location.href='musicshare://auth-success?service=youtube';</script>Please return to the app."
+
+        return jsonify({'message': 'YouTube Music linked successfully', 'user': user.to_dict(user_id)})
         
-    except requests.RequestException as e:
-        app.logger.error(f'YouTube API error: {str(e)}')
-        return jsonify({'error': 'Failed to connect to YouTube Music'}), 503
+    except Exception as e:
+        app.logger.error(f'YouTube callback error: {str(e)}')
+        db.session.rollback()
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 @app.route('/api/integrations/youtube/link-token', methods=['POST'])

@@ -71,13 +71,13 @@ const spotifyDiscovery = {
  * Redirect URI for Spotify OAuth
  * Uses custom scheme for deep linking back to the app
  */
-const SPOTIFY_REDIRECT_URI = 'https://auth.expo.io/@breidi282/music-share';
+const SPOTIFY_REDIRECT_URI = 'https://music-share-b4r8.onrender.com/api/integrations/spotify/callback';
 
 /**
  * Redirect URI for YouTube Music OAuth
  * Uses Expo's auth proxy for handling OAuth redirects
  */
-const YOUTUBE_REDIRECT_URI = 'https://auth.expo.io/@breidi282/music-share';
+const YOUTUBE_REDIRECT_URI = 'https://music-share-b4r8.onrender.com/api/integrations/youtube/callback';
 
 /**
  * Redirect URI for Deezer OAuth
@@ -159,6 +159,7 @@ export default function SettingsScreen({ navigation }: any) {
                 'user-read-playback-state',     // Read playback state
             ],
             redirectUri: SPOTIFY_REDIRECT_URI,
+            extraParams: { state: user?.id?.toString() || '' },
         },
         spotifyDiscovery
     );
@@ -176,6 +177,7 @@ export default function SettingsScreen({ navigation }: any) {
                 'https://www.googleapis.com/auth/youtube.readonly',  // Read YouTube library
             ],
             usePKCE: false,  // Google web client doesn't support PKCE
+            extraParams: { state: user?.id?.toString() || '' },
         },
         {
             authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
