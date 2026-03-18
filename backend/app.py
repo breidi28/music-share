@@ -16,6 +16,7 @@ import ssl
 import random
 import string
 from email.message import EmailMessage
+import jwt
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -48,9 +49,11 @@ else:
     
     app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{full_db_path}"
 
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-change-in-production')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Reduced from 30 days
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_recycle": 280,
+    "pool_pre_ping": True,
+}
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
@@ -544,6 +547,35 @@ def _ensure_phase0_schema() -> None:
             with db.engine.connect() as conn:
                 conn.execute(text('ALTER TABLE comment ADD COLUMN parent_id INTEGER'))
                 conn.commit()
+
+
+def _generate_apple_music_token():
+    """Generate a JWT for Apple Music API (Developer Token)."""
+    if not APPLE_MUSIC_KEY_ID or not APPLE_MUSIC_TEAM_ID or not APPLE_MUSIC_PRIVATE_KEY:
+        return None
+
+    try:
+        current_time = int(time.time())
+        # Token valid for 30 minutes
+        payload = {
+            'iss': APPLE_MUSIC_TEAM_ID,
+            'iat': current_time,
+            'exp': current_time + 1800
+        }
+        headers = {
+            'alg': 'ES256',
+            'kid': APPLE_MUSIC_KEY_ID
+        }
+
+        # Clear newlines from private key if needed
+        pk = APPLE_MUSIC_PRIVATE_KEY
+        if "-----BEGIN PRIVATE KEY-----" not in pk:
+            pk = f"-----BEGIN PRIVATE KEY-----\n{pk}\n-----END PRIVATE KEY-----"
+
+        return jwt.encode(payload, pk, algorithm='ES256', headers=headers)
+    except Exception as e:
+        app.logger.error(f'Failed to generate Apple Music developer token: {str(e)}')
+        return None
 
 
 class PasswordResetCode(db.Model):
@@ -1532,17 +1564,16 @@ def apple_music_playlists():
     """User's Apple Music library playlists."""
     user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
     user = db.get_or_404(User, user_id)
-
-    if not user.apple_music_user_token:
-        app.logger.error(f'[Apple Music Playlists] No token for user {user_id}')
-        return jsonify({'error': 'Apple Music not linked'}), 400
-
     try:
+        dev_token = _generate_apple_music_token()
+        if not dev_token:
+            return jsonify({'error': 'Apple Music developer token not configured'}), 500
+
         app.logger.debug(f'[Apple Music] Fetching playlists for user {user_id}')
         r = requests.get(
             'https://api.music.apple.com/v1/me/library/playlists',
             headers={
-                'Authorization': f"Bearer {user.apple_music_user_token}",
+                'Authorization': f"Bearer {dev_token}",
                 'Music-User-Token': user.apple_music_user_token
             },
             params={'limit': 20},

@@ -71,9 +71,7 @@ const spotifyDiscovery = {
  * Redirect URI for Spotify OAuth
  * Uses custom scheme for deep linking back to the app
  */
-const SPOTIFY_REDIRECT_URI = AuthSession.makeRedirectUri({
-    scheme: 'musicshare',
-});
+const SPOTIFY_REDIRECT_URI = 'https://auth.expo.io/@breidi282/music-share';
 
 /**
  * Redirect URI for YouTube Music OAuth
@@ -101,23 +99,23 @@ const deezerDiscovery = {
 export default function SettingsScreen({ navigation }: any) {
     const insets = useSafeAreaInsets();
     const { user, logout } = useAuthStore();
-    
+
     // ───────────────────────────────────────────────────────────────────────
     // State Management
     // ───────────────────────────────────────────────────────────────────────
-    
+
     /**
      * User profile with music service connection status
      * Fetched from backend to show real-time connection state
      */
     const [profile, setProfile] = useState<User | null>(null);
-    
+
     /**
      * Loading state for music service operations
      * Shows spinner during OAuth flow and disconnect operations
      */
     const [loadingServices, setLoadingServices] = useState(false);
-    
+
     /**
      * Notification preferences synced with backend
      */
@@ -128,7 +126,7 @@ export default function SettingsScreen({ navigation }: any) {
         notify_mentions: true,
         notify_replies: true,
     });
-    
+
     /**
      * Privacy settings (local state)
      * TODO: Persist to backend when API endpoint is available
@@ -142,7 +140,7 @@ export default function SettingsScreen({ navigation }: any) {
     // ───────────────────────────────────────────────────────────────────────
     // OAuth Configuration Hooks
     // ───────────────────────────────────────────────────────────────────────
-    
+
     /**
      * Spotify OAuth hook
      * Handles authorization code flow with required scopes
@@ -210,7 +208,7 @@ export default function SettingsScreen({ navigation }: any) {
     // ───────────────────────────────────────────────────────────────────────
     // Effects
     // ───────────────────────────────────────────────────────────────────────
-    
+
     /**
      * Fetch user profile on mount and when user ID changes
      * Ensures we have latest connection status for all music services
@@ -324,7 +322,7 @@ export default function SettingsScreen({ navigation }: any) {
     // ───────────────────────────────────────────────────────────────────────
     // Music Service Handlers
     // ───────────────────────────────────────────────────────────────────────
-    
+
     /**
      * Handle Spotify OAuth callback
      * Exchanges authorization code for access token via backend
@@ -392,7 +390,7 @@ export default function SettingsScreen({ navigation }: any) {
                         const res = await spotifyApi.disconnect();
                         setProfile(res.data.user);
                         Toast.show({ type: 'success', text1: 'Success', text2: 'Spotify disconnected' });
-                    } catch {}
+                    } catch { }
                 }
             }
         ]);
@@ -411,7 +409,7 @@ export default function SettingsScreen({ navigation }: any) {
                         const res = await youtubeApi.disconnect();
                         setProfile(res.data.user);
                         Toast.show({ type: 'success', text1: 'Success', text2: 'YouTube Music disconnected' });
-                    } catch {}
+                    } catch { }
                 }
             }
         ]);
@@ -430,7 +428,7 @@ export default function SettingsScreen({ navigation }: any) {
                         const res = await appleMusicApi.disconnect();
                         setProfile(res.data.user);
                         Toast.show({ type: 'success', text1: 'Success', text2: 'Apple Music disconnected' });
-                    } catch {}
+                    } catch { }
                 }
             }
         ]);
@@ -449,7 +447,7 @@ export default function SettingsScreen({ navigation }: any) {
                         const res = await tidalApi.disconnect();
                         setProfile(res.data.user);
                         Toast.show({ type: 'success', text1: 'Success', text2: 'Tidal disconnected' });
-                    } catch {}
+                    } catch { }
                 }
             }
         ]);
@@ -468,7 +466,7 @@ export default function SettingsScreen({ navigation }: any) {
                         const res = await qobuzApi.disconnect();
                         setProfile(res.data.user);
                         Toast.show({ type: 'success', text1: 'Success', text2: 'Qobuz disconnected' });
-                    } catch {}
+                    } catch { }
                 }
             }
         ]);
@@ -487,7 +485,7 @@ export default function SettingsScreen({ navigation }: any) {
                         const res = await deezerApi.disconnect();
                         setProfile(res.data.user);
                         Toast.show({ type: 'success', text1: 'Success', text2: 'Deezer disconnected' });
-                    } catch {}
+                    } catch { }
                 }
             }
         ]);
@@ -496,7 +494,7 @@ export default function SettingsScreen({ navigation }: any) {
     // ───────────────────────────────────────────────────────────────────────
     // Account Action Handlers
     // ───────────────────────────────────────────────────────────────────────
-    
+
     /**
      * Handle user logout
      * Shows confirmation dialog, clears auth state, and navigates to login
@@ -512,14 +510,13 @@ export default function SettingsScreen({ navigation }: any) {
                     style: 'destructive',
                     onPress: () => {
                         logout();
-                        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
                     },
                 },
             ]
         );
     };
 
-    
+
     /**
      * Handle account deletion
      * Shows warning dialog about permanent data loss
@@ -546,7 +543,7 @@ export default function SettingsScreen({ navigation }: any) {
     // ───────────────────────────────────────────────────────────────────────
     // UI Components
     // ───────────────────────────────────────────────────────────────────────
-    
+
     /**
      * SettingSection Component
      * Reusable section container with title and grouped settings
@@ -555,12 +552,12 @@ export default function SettingsScreen({ navigation }: any) {
      */
     const SettingSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
         <View style={{ marginBottom: 32 }}>
-            <Text style={{ 
+            <Text style={{
                 color: HIG.secondaryText,
-                fontSize: 13, 
-                fontWeight: '600', 
-                textTransform: 'uppercase', 
-                letterSpacing: 0.8, 
+                fontSize: 13,
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: 0.8,
                 marginBottom: 12,
                 paddingHorizontal: 16,
             }}>
@@ -588,14 +585,14 @@ export default function SettingsScreen({ navigation }: any) {
      * @param isLast - Whether this is the last row (removes bottom border)
      * @param destructive - Whether to use destructive styling (red text)
      */
-    const SettingRow = ({ 
-        icon, 
-        label, 
-        value, 
-        onPress, 
-        showArrow = true, 
-        isSwitch = false, 
-        switchValue, 
+    const SettingRow = ({
+        icon,
+        label,
+        value,
+        onPress,
+        showArrow = true,
+        isSwitch = false,
+        switchValue,
         onSwitchChange,
         isLast = false,
         destructive = false,
@@ -613,10 +610,10 @@ export default function SettingsScreen({ navigation }: any) {
         const content = (
             <>
                 <Ionicons name={icon} size={22} color={destructive ? Colors.primary : '#9ca3af'} />
-                <Text style={{ 
-                    color: destructive ? Colors.primary : 'white', 
-                    fontSize: 16, 
-                    marginLeft: 12, 
+                <Text style={{
+                    color: destructive ? Colors.primary : 'white',
+                    fontSize: 16,
+                    marginLeft: 12,
                     flex: 1,
                 }}>
                     {label}
@@ -664,9 +661,9 @@ export default function SettingsScreen({ navigation }: any) {
      * @param color - Brand color for the service
      * @param loading - Whether OAuth flow is in progress
      */
-    const MusicServiceRow = ({ 
-        icon, 
-        label, 
+    const MusicServiceRow = ({
+        icon,
+        label,
         connected,
         onConnect,
         onDisconnect,
@@ -712,12 +709,12 @@ export default function SettingsScreen({ navigation }: any) {
             {loading ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
             ) : connected ? (
-                <TouchableOpacity 
+                <TouchableOpacity
                     onPress={onDisconnect}
-                    style={{ 
-                        backgroundColor: 'rgba(255,255,255,0.06)', 
-                        borderRadius: 12, 
-                        paddingHorizontal: 14, 
+                    style={{
+                        backgroundColor: 'rgba(255,255,255,0.06)',
+                        borderRadius: 12,
+                        paddingHorizontal: 14,
                         paddingVertical: 8,
                         borderWidth: 1,
                         borderColor: 'rgba(255,255,255,0.12)',
@@ -730,12 +727,12 @@ export default function SettingsScreen({ navigation }: any) {
                     <Text style={{ color: '#fca5a5', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 }}>Disconnect</Text>
                 </TouchableOpacity>
             ) : (
-                <TouchableOpacity 
+                <TouchableOpacity
                     onPress={onConnect}
-                    style={{ 
-                        backgroundColor: 'rgba(255,255,255,0.06)', 
-                        borderRadius: 12, 
-                        paddingHorizontal: 14, 
+                    style={{
+                        backgroundColor: 'rgba(255,255,255,0.06)',
+                        borderRadius: 12,
+                        paddingHorizontal: 14,
                         paddingVertical: 8,
                         borderWidth: 1,
                         borderColor: 'rgba(255,255,255,0.12)',

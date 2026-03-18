@@ -41,10 +41,10 @@ const Tab = createBottomTabNavigator();
 
 function TabNavigator() {
     const insets = useSafeAreaInsets();
-    
+
     // Calculate tab bar height with safe area insets
     const tabBarHeight = Platform.OS === 'ios' ? 64 + insets.bottom : 58 + insets.bottom;
-    
+
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
@@ -157,46 +157,45 @@ export default function AppNavigator() {
                 },
             }}
         >
-            <Stack.Navigator 
-                screenOptions={{ 
+            <Stack.Navigator
+                screenOptions={{
                     headerShown: false,
                     // iOS-style gestures and animations
                     gestureEnabled: true,
                     gestureDirection: 'horizontal',
                     animation: Platform.OS === 'ios' ? 'default' : 'fade',
-                    customAnimationOnGesture: true,
                     fullScreenGestureEnabled: true,
                 }}
             >
                 {isAuthenticated ? (
                     <>
                         <Stack.Screen name="Main" component={TabNavigator} />
-                        <Stack.Screen 
-                            name="Profile" 
+                        <Stack.Screen
+                            name="Profile"
                             component={ProfileScreen}
                             options={{
                                 presentation: 'card',
                                 animation: 'slide_from_right',
                             }}
                         />
-                        <Stack.Screen 
-                            name="Search" 
+                        <Stack.Screen
+                            name="Search"
                             component={SearchScreen}
                             options={{
                                 presentation: Platform.OS === 'ios' ? 'modal' : 'card',
                                 animation: Platform.OS === 'ios' ? 'slide_from_bottom' : 'fade',
                             }}
                         />
-                        <Stack.Screen 
-                            name="Notifications" 
+                        <Stack.Screen
+                            name="Notifications"
                             component={NotificationsScreen}
                             options={{
                                 presentation: Platform.OS === 'ios' ? 'modal' : 'card',
                                 animation: Platform.OS === 'ios' ? 'slide_from_bottom' : 'fade',
                             }}
                         />
-                        <Stack.Screen 
-                            name="Settings" 
+                        <Stack.Screen
+                            name="Settings"
                             component={SettingsScreen}
                             options={{
                                 presentation: 'card',
@@ -211,40 +210,40 @@ export default function AppNavigator() {
                                 animation: 'slide_from_right',
                             }}
                         />
-                        <Stack.Screen 
-                            name="Terms" 
+                        <Stack.Screen
+                            name="Terms"
                             component={TermsScreen}
                             options={{
                                 presentation: 'card',
                                 animation: 'slide_from_right',
                             }}
                         />
-                        <Stack.Screen 
-                            name="PrivacyPolicy" 
+                        <Stack.Screen
+                            name="PrivacyPolicy"
                             component={PrivacyPolicyScreen}
                             options={{
                                 presentation: 'card',
                                 animation: 'slide_from_right',
                             }}
                         />
-                        <Stack.Screen 
-                            name="HelpSupport" 
+                        <Stack.Screen
+                            name="HelpSupport"
                             component={HelpSupportScreen}
                             options={{
                                 presentation: 'card',
                                 animation: 'slide_from_right',
                             }}
                         />
-                        <Stack.Screen 
-                            name="FollowersList" 
+                        <Stack.Screen
+                            name="FollowersList"
                             component={FollowersListScreen}
                             options={{
                                 presentation: 'card',
                                 animation: 'slide_from_right',
                             }}
                         />
-                        <Stack.Screen 
-                            name="Collection" 
+                        <Stack.Screen
+                            name="Collection"
                             component={CollectionScreen}
                             options={{
                                 presentation: 'card',
@@ -294,29 +293,29 @@ export default function AppNavigator() {
                     </>
                 ) : (
                     <>
-                        <Stack.Screen 
-                            name="Login" 
+                        <Stack.Screen
+                            name="Login"
                             component={LoginScreen}
                             options={{
                                 animation: 'fade',
                             }}
                         />
-                        <Stack.Screen 
-                            name="Register" 
+                        <Stack.Screen
+                            name="Register"
                             component={RegisterScreen}
                             options={{
                                 animation: 'slide_from_right',
                             }}
                         />
-                        <Stack.Screen 
-                            name="ForgotPassword" 
+                        <Stack.Screen
+                            name="ForgotPassword"
                             component={ForgotPasswordScreen}
                             options={{
                                 animation: 'slide_from_right',
                             }}
                         />
-                        <Stack.Screen 
-                            name="ResetPassword" 
+                        <Stack.Screen
+                            name="ResetPassword"
                             component={ResetPasswordScreen}
                             options={{
                                 animation: 'slide_from_right',
