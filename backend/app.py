@@ -56,12 +56,12 @@ db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
 # Basic liveness endpoints for hosting platform health checks
-@app.route('/', methods=['GET'])
+@app.route('/api/', methods=['GET'])
 def root_health():
     return jsonify({'status': 'ok', 'service': 'music-share-backend'}), 200
 
 
-@app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health():
     return jsonify({'status': 'healthy'}), 200
 
