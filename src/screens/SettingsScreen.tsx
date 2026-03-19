@@ -23,8 +23,6 @@ import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
-import { ResponseType } from 'expo-auth-session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
@@ -83,7 +81,7 @@ const YOUTUBE_REDIRECT_URI = 'https://music-share-b4r8.onrender.com/api/integrat
  * Redirect URI for Deezer OAuth
  * Uses Expo's auth proxy for handling OAuth redirects
  */
-const DEEZER_REDIRECT_URI = 'https://auth.expo.io/@breidi282/music-share';
+const DEEZER_REDIRECT_URI = 'https://music-share-b4r8.onrender.com/api/integrations/deezer/callback';
 
 /**
  * Deezer OAuth endpoints
@@ -141,76 +139,10 @@ export default function SettingsScreen({ navigation }: any) {
     // OAuth Configuration Hooks
     // ───────────────────────────────────────────────────────────────────────
 
-    /**
-     * Spotify OAuth hook
-     * Handles authorization code flow with required scopes
-     */
-    const [spotifyRequest, spotifyResponse, spotifyPromptAsync] = AuthSession.useAuthRequest(
-        {
-            clientId: SPOTIFY_CLIENT_ID,
-            scopes: [
-                'user-read-email',              // Read user email
-                'user-read-private',            // Read user profile data
-                'user-top-read',                // Read top artists and tracks
-                'user-read-recently-played',    // Read listening history
-                'playlist-read-private',        // Read private playlists
-                'playlist-read-collaborative',  // Read collaborative playlists
-                'user-read-currently-playing',  // Read currently playing track
-                'user-read-playback-state',     // Read playback state
-            ],
-            redirectUri: SPOTIFY_REDIRECT_URI,
-            extraParams: { state: user?.id?.toString() || '' },
-        },
-        spotifyDiscovery
-    );
-
-    /**
-     * YouTube Music OAuth hook
-     * Uses Google OAuth with authorization code flow (no PKCE)
-     */
-    const [youtubeRequest, youtubeResponse, youtubePromptAsync] = AuthSession.useAuthRequest(
-        {
-            clientId: GOOGLE_WEB_CLIENT_ID,
-            redirectUri: YOUTUBE_REDIRECT_URI,
-            responseType: ResponseType.Code,
-            scopes: [
-                'https://www.googleapis.com/auth/youtube.readonly',  // Read YouTube library
-            ],
-            usePKCE: false,  // Google web client doesn't support PKCE
-            extraParams: { state: user?.id?.toString() || '' },
-        },
-        {
-            authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-        }
-    );
-
-    /**
-     * Deezer OAuth hook
-     * Uses Deezer OAuth with authorization code flow
-     */
-    const [deezerRequest, deezerResponse, deezerPromptAsync] = AuthSession.useAuthRequest(
-        {
-            clientId: DEEZER_APP_ID,
-            redirectUri: DEEZER_REDIRECT_URI,
-            responseType: ResponseType.Code,
-            scopes: [
-                'basic_access',           // Basic access to user data
-                'email',                  // Access to user email
-                'offline_access',         // Access user data any time
-                'manage_library',         // Manage user's library
-                'listening_history',      // Access listening history
-            ],
-            extraParams: {
-                perms: 'basic_access,email,offline_access,manage_library,listening_history',
-            },
-        },
-        deezerDiscovery
-    );
-
     // ───────────────────────────────────────────────────────────────────────
     // Effects
     // ───────────────────────────────────────────────────────────────────────
-
+    
     /**
      * Fetch user profile on mount and when user ID changes
      * Ensures we have latest connection status for all music services
@@ -228,38 +160,100 @@ export default function SettingsScreen({ navigation }: any) {
         fetchProfile();
     }, [user?.id]);
 
-    /**
-     * Handle Spotify OAuth response
-     * Triggers when user returns from Spotify authorization
-     */
-    useEffect(() => {
-        if (spotifyResponse?.type === 'success') {
-            const { code } = spotifyResponse.params;
-            handleSpotifyCallback(code);
-        }
-    }, [spotifyResponse]);
 
     /**
-     * Handle YouTube Music OAuth response
-     * Triggers when user returns from Google authorization
+     * Handle Spotify Connection Plan
+     * Manually construct URL to 'forget expo' and use direct Render redirect
      */
-    useEffect(() => {
-        if (youtubeResponse?.type === 'success') {
-            const { code } = youtubeResponse.params;
-            handleYouTubeCallback(code);
+    const handleConnectSpotify = async () => {
+        if (!user?.id) return;
+        setLoadingServices(true);
+        try {
+            const scopes = [
+                'user-read-email',
+                'user-read-private',
+                'user-top-read',
+                'user-read-recently-played',
+                'playlist-read-private',
+                'playlist-read-collaborative',
+                'user-read-currently-playing',
+                'user-read-playback-state',
+            ].join(' ');
+
+            const authUrl = `https://accounts.spotify.com/authorize?client_id=${SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(SPOTIFY_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&state=${user.id}`;
+            
+            const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
+            
+            if (result.type === 'success') {
+                // If the backend handled it, just refresh profile
+                const res = await usersApi.getUser(user.id);
+                setProfile(res.data);
+                Toast.show({ type: 'success', text1: 'Spotify Connected!' });
+            }
+        } catch (error) {
+            console.error('Spotify connection failed:', error);
+            Toast.show({ type: 'error', text1: 'Connection failed' });
+        } finally {
+            setLoadingServices(false);
         }
-    }, [youtubeResponse]);
+    };
 
     /**
-     * Handle Deezer OAuth response
-     * Triggers when user returns from Deezer authorization
+     * Handle YouTube Music Connection Plan
+     * Manually construct URL to 'forget expo' and use direct Render redirect
      */
-    useEffect(() => {
-        if (deezerResponse?.type === 'success') {
-            const { code } = deezerResponse.params;
-            handleDeezerCallback(code);
+    const handleConnectYouTube = async () => {
+        if (!user?.id) return;
+        setLoadingServices(true);
+        try {
+            const scope = 'https://www.googleapis.com/auth/youtube.readonly';
+            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_WEB_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(YOUTUBE_REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&state=${user.id}&access_type=offline&prompt=consent`;
+
+            const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
+            
+            if (result.type === 'success') {
+                const res = await usersApi.getUser(user.id);
+                setProfile(res.data);
+                Toast.show({ type: 'success', text1: 'YouTube Music Connected!' });
+            }
+        } catch (error) {
+            console.error('YouTube Music connection failed:', error);
+            Toast.show({ type: 'error', text1: 'Connection failed' });
+        } finally {
+            setLoadingServices(false);
         }
-    }, [deezerResponse]);
+    };
+
+    /**
+     * Handle Deezer Connection
+     */
+    const handleConnectDeezer = async () => {
+        if (!user?.id) return;
+        setLoadingServices(true);
+        try {
+            const perms = 'basic_access,email,offline_access,manage_library,listening_history';
+            const authUrl = `https://connect.deezer.com/oauth/auth.php?app_id=${DEEZER_APP_ID}&redirect_uri=${encodeURIComponent(DEEZER_REDIRECT_URI)}&perms=${encodeURIComponent(perms)}&state=${user.id}`;
+
+            const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
+            
+            if (result.type === 'success') {
+                const res = await usersApi.getUser(user.id);
+                setProfile(res.data);
+                Toast.show({ type: 'success', text1: 'Deezer Connected!' });
+            }
+        } catch (error) {
+            console.error('Deezer connection failed:', error);
+        } finally {
+            setLoadingServices(false);
+        }
+    };
+
+    /**
+     * Handle Apple Music Connection (MusicKit usually handles this better on device)
+     */
+    const handleConnectAppleMusic = () => {
+        Toast.show({ type: 'info', text1: 'Apple Music', text2: 'Integration coming soon!' });
+    };
 
     /**
      * Load notification settings from backend
@@ -801,22 +795,12 @@ export default function SettingsScreen({ navigation }: any) {
                     />
                 </SettingSection>
 
-                {/* ═══════════════════════════════════════════════════════════
-                    Music Services Section - Connect/disconnect streaming services
-                    
-                    Supported Services:
-                    - Spotify: Full OAuth integration
-                    - YouTube Music: Google OAuth integration
-                    - Apple Music: Planned (requires MusicKit)
-                    - Tidal: Backend ready (needs API credentials)
-                    - Qobuz: Backend ready (needs API credentials)
-                    ═══════════════════════════════════════════════════════════ */}
                 <SettingSection title="Music Services">
                     <MusicServiceRow
                         icon="spotify"
                         label="Spotify"
                         connected={profile?.has_spotify_linked}
-                        onConnect={() => spotifyRequest && spotifyPromptAsync()}
+                        onConnect={handleConnectSpotify}
                         onDisconnect={handleDisconnectSpotify}
                         color="#1DB954"
                         loading={loadingServices}
@@ -825,7 +809,7 @@ export default function SettingsScreen({ navigation }: any) {
                         icon="youtube"
                         label="YouTube Music"
                         connected={profile?.has_youtube_linked}
-                        onConnect={() => youtubeRequest && youtubePromptAsync()}
+                        onConnect={handleConnectYouTube}
                         onDisconnect={handleDisconnectYouTube}
                         color="#FF0000"
                         loading={loadingServices}
@@ -834,7 +818,7 @@ export default function SettingsScreen({ navigation }: any) {
                         icon="apple"
                         label="Apple Music"
                         connected={profile?.has_apple_music_linked}
-                        onConnect={() => Toast.show({ type: 'info', text1: 'Apple Music', text2: 'Integration coming soon!' })}
+                        onConnect={handleConnectAppleMusic}
                         onDisconnect={handleDisconnectAppleMusic}
                         color="#FC3A6E"
                         loading={loadingServices}
@@ -849,25 +833,19 @@ export default function SettingsScreen({ navigation }: any) {
                         loading={loadingServices}
                     />
                     <MusicServiceRow
-                        icon="compact-disc"
+                        icon="database"
                         label="Qobuz"
                         connected={profile?.has_qobuz_linked}
                         onConnect={() => Toast.show({ type: 'info', text1: 'Qobuz', text2: 'Backend API credentials needed.' })}
                         onDisconnect={handleDisconnectQobuz}
-                        color="#f87171"
+                        color="#2196F3"
                         loading={loadingServices}
                     />
                     <MusicServiceRow
                         icon="music"
                         label="Deezer"
                         connected={profile?.has_deezer_linked}
-                        onConnect={() => {
-                            if (!DEEZER_APP_ID) {
-                                Toast.show({ type: 'info', text1: 'Deezer', text2: 'Credentials configuration needed.' });
-                            } else {
-                                deezerPromptAsync();
-                            }
-                        }}
+                        onConnect={handleConnectDeezer}
                         onDisconnect={handleDisconnectDeezer}
                         color="#FF0092"
                         loading={loadingServices}

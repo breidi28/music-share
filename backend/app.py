@@ -1983,25 +1983,39 @@ def qobuz_disconnect():
 
 # ─── Deezer Integration ────────────────────────────────────────────────────────
 
-@app.route('/api/integrations/deezer/callback', methods=['POST'])
-@jwt_required()
+@app.route('/api/integrations/deezer/callback', methods=['GET', 'POST'])
 def deezer_callback():
-    """Complete Deezer OAuth flow and store access token."""
-    current_user_id = int(get_jwt_identity())
-    user = db.get_or_404(User, current_user_id)
-    
+    """Handle Deezer OAuth callback. Supports both GET (direct) and POST (frontend relay)."""
     try:
-        data = request.get_json()
-        code = data.get('code')
+        # Check if it's a direct redirect (GET) or a frontend relay (POST)
+        if request.method == 'GET':
+            code = request.args.get('code')
+            state = request.args.get('state') # We expect the user_id in the state
+            if not state:
+                return "Missing state parameter (user_id required)", 400
+            user_id = int(state)
+        else:
+            try:
+                verify_jwt_in_request()
+                current_user_id = int(get_jwt_identity())
+            except Exception:
+                return jsonify({'error': 'Authentication required'}), 401
+            
+            data = request.get_json() or {}
+            code = data.get('code')
+            user_id = current_user_id
         
         if not code:
+            if request.method == 'GET':
+                return "Missing authorization code", 400
             return jsonify({'error': 'Missing authorization code'}), 400
-        
+            
         if not DEEZER_APP_ID or not DEEZER_APP_SECRET:
-            return jsonify({'error': 'Deezer not configured'}), 500
+            app.logger.error('[Deezer] Missing credentials in environment')
+            return "Deezer not configured", 500
         
         # Exchange code for access token
-        import requests
+        # Deezer sometimes returns query string, sometimes JSON depending on Content-Type/Output param
         token_url = 'https://connect.deezer.com/oauth/access_token.php'
         params = {
             'app_id': DEEZER_APP_ID,
@@ -2010,53 +2024,58 @@ def deezer_callback():
             'output': 'json'
         }
         
-        response = requests.get(token_url, params=params)
+        response = requests.get(token_url, params=params, timeout=10)
         
         if response.status_code != 200:
+            if request.method == 'GET':
+                return "Failed to exchange code with Deezer", 400
             return jsonify({'error': 'Failed to exchange code for token'}), 400
-        
-        # Deezer returns access_token in query string format
-        from urllib.parse import parse_qs
-        token_data = parse_qs(response.text)
-        
-        if 'access_token' not in token_data:
-            # Try JSON format
-            try:
-                token_data = response.json()
-                access_token = token_data.get('access_token')
-            except:
-                return jsonify({'error': 'Invalid token response from Deezer'}), 400
-        else:
-            access_token = token_data['access_token'][0]
-        
+            
+        # Try to parse as JSON first
+        try:
+            token_data = response.json()
+            access_token = token_data.get('access_token')
+            expires = token_data.get('expires', 0)
+        except:
+            # Fallback to query string
+            from urllib.parse import parse_qs
+            token_data = parse_qs(response.text)
+            access_token = token_data.get('access_token', [''])[0]
+            expires = int(token_data.get('expires', [0])[0])
+
         if not access_token:
+            if request.method == 'GET':
+                return "No access token received from Deezer", 400
             return jsonify({'error': 'No access token received'}), 400
-        
-        # Get user info to verify token
-        user_info_response = requests.get(
-            'https://api.deezer.com/user/me',
-            params={'access_token': access_token}
-        )
-        
-        if user_info_response.status_code != 200:
-            return jsonify({'error': 'Failed to verify Deezer token'}), 400
-        
-        user_info = user_info_response.json()
-        deezer_user_id = str(user_info.get('id', ''))
-        
-        # Store tokens
+            
+        user = db.session.get(User, user_id)
+        if not user:
+            return "User not found", 404
+
+        # Fetch Deezer User ID
+        user_info_req = requests.get('https://api.deezer.com/user/me', params={'access_token': access_token}, timeout=10)
+        if user_info_req.status_code == 200:
+            user_info = user_info_req.json()
+            user.deezer_user_id = str(user_info.get('id', ''))
+
         user.deezer_access_token = access_token
-        user.deezer_user_id = deezer_user_id
-        # Deezer access tokens don't expire by default, but we'll set a far future date
-        user.deezer_token_expires_at = datetime.utcnow() + timedelta(days=3650)
+        if expires > 0:
+            user.deezer_token_expires_at = datetime.utcnow() + timedelta(seconds=expires)
+        else:
+            # Set a long default for offline access
+            user.deezer_token_expires_at = datetime.utcnow() + timedelta(days=365)
         
         db.session.commit()
-        return jsonify({'message': 'Deezer linked successfully', 'user': user.to_dict(current_user_id)})
+
+        if request.method == 'GET':
+            return "<script>window.location.href='musicshare://auth-success?service=deezer';</script>Please return to the app."
+
+        return jsonify({'message': 'Deezer linked successfully', 'user': user.to_dict(user_id)})
         
     except Exception as e:
         app.logger.error(f'Deezer callback error: {str(e)}')
-        return jsonify({'error': 'Failed to link Deezer'}), 503
-
+        db.session.rollback()
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/integrations/deezer/playlists', methods=['GET'])
 @jwt_required()
