@@ -60,7 +60,7 @@ client.interceptors.response.use(
             Toast.show({
                 type: 'error',
                 text1: 'Oops!',
-                text2: errorMessage.length > 50 ? errorMessage.substring(0, 50) + '...' : errorMessage,
+                text2: errorMessage,
                 position: 'bottom', 
                 bottomOffset: 100, 
             });

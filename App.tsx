@@ -1,44 +1,50 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import Toast, { BaseToast, ErrorToast, ToastConfig } from 'react-native-toast-message';
+import Toast, { ToastConfig, ToastProps } from 'react-native-toast-message';
+import { View, Text } from 'react-native';
 import { useAuthStore } from './src/store/authStore';
 import AppNavigator from './src/navigation/AppNavigator';
 
 import './global.css';
 
-/* Define custom toast templates that fit the app's dark Apple aesthetic */
+/* Fully custom toast — auto-height so long messages never get clipped */
+const AppToast = ({ text1, text2, color }: { text1?: string; text2?: string; color: string }) => (
+  <View
+    style={{
+      width: '90%',
+      backgroundColor: '#1C1C1E',
+      borderRadius: 12,
+      borderLeftWidth: 4,
+      borderLeftColor: color,
+      paddingHorizontal: 15,
+      paddingVertical: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.35,
+      shadowRadius: 6,
+      elevation: 6,
+    }}
+  >
+    {!!text1 && (
+      <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '600', flexShrink: 1 }}>
+        {text1}
+      </Text>
+    )}
+    {!!text2 && (
+      <Text style={{ color: '#8E8E93', fontSize: 13, marginTop: text1 ? 3 : 0, flexShrink: 1 }}>
+        {text2}
+      </Text>
+    )}
+  </View>
+);
+
 const toastConfig: ToastConfig = {
-  success: (props) => (
-    <BaseToast
-      {...props}
-      style={{ borderLeftColor: '#34C759', backgroundColor: '#1C1C1E', borderRadius: 12 }}
-      contentContainerStyle={{ paddingHorizontal: 15 }}
-      text1Style={{ color: 'white', fontSize: 16, fontWeight: '600' }}
-      text2Style={{ color: '#8E8E93', fontSize: 14 }}
-    />
-  ),
-  error: (props) => (
-    <ErrorToast
-      {...props}
-      style={{ borderLeftColor: '#FF3B30', backgroundColor: '#1C1C1E', borderRadius: 12 }}
-      contentContainerStyle={{ paddingHorizontal: 15 }}
-      text1Style={{ color: 'white', fontSize: 16, fontWeight: '600' }}
-      text2Style={{ color: '#8E8E93', fontSize: 14 }}
-    />
-  ),
-  info: (props) => (
-    <BaseToast
-      {...props}
-      style={{ borderLeftColor: '#0A84FF', backgroundColor: '#1C1C1E', borderRadius: 12 }}
-      contentContainerStyle={{ paddingHorizontal: 15 }}
-      text1Style={{ color: 'white', fontSize: 16, fontWeight: '600' }}
-      text2Style={{ color: '#8E8E93', fontSize: 14 }}
-    />
-  )
+  success: (props: ToastProps) => <AppToast text1={props.text1 ?? ''} text2={props.text2 ?? ''} color="#34C759" />,
+  error:   (props: ToastProps) => <AppToast text1={props.text1 ?? ''} text2={props.text2 ?? ''} color="#FF3B30" />,
+  info:    (props: ToastProps) => <AppToast text1={props.text1 ?? ''} text2={props.text2 ?? ''} color="#0A84FF" />,
 };
 
 export default function App() {
