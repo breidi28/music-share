@@ -18,7 +18,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Switch, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Switch, Platform, ActivityIndicator, Modal } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
@@ -134,6 +134,23 @@ export default function SettingsScreen({ navigation }: any) {
         showListeningActivity: true,  // Show real-time listening on profile
         showCollection: true,         // Show music collection to others
     });
+
+    const [confirmDialog, setConfirmDialog] = useState<{
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    } | null>(null);
+
+    const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+        if (Platform.OS !== 'web') {
+            Alert.alert(title, message, [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Confirm', style: 'destructive', onPress: onConfirm },
+            ]);
+        } else {
+            setConfirmDialog({ title, message, onConfirm });
+        }
+    };
 
     // ───────────────────────────────────────────────────────────────────────
     // OAuth Configuration Hooks
@@ -378,18 +395,13 @@ export default function SettingsScreen({ navigation }: any) {
      * Shows confirmation dialog and removes Spotify access from backend
      */
     const handleDisconnectSpotify = () => {
-        Alert.alert('Disconnect Spotify', 'Remove Spotify link from your account?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Disconnect', style: 'destructive', onPress: async () => {
-                    try {
-                        const res = await spotifyApi.disconnect();
-                        setProfile(res.data.user);
-                        Toast.show({ type: 'success', text1: 'Success', text2: 'Spotify disconnected' });
-                    } catch { }
-                }
-            }
-        ]);
+        showConfirm('Disconnect Spotify', 'Remove Spotify link from your account?', async () => {
+            try {
+                const res = await spotifyApi.disconnect();
+                setProfile(res.data.user);
+                Toast.show({ type: 'success', text1: 'Success', text2: 'Spotify disconnected' });
+            } catch { }
+        });
     };
 
     /**
@@ -397,18 +409,13 @@ export default function SettingsScreen({ navigation }: any) {
      * Shows confirmation dialog and removes YouTube access from backend
      */
     const handleDisconnectYouTube = () => {
-        Alert.alert('Disconnect YouTube Music', 'Remove YouTube Music link from your account?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Disconnect', style: 'destructive', onPress: async () => {
-                    try {
-                        const res = await youtubeApi.disconnect();
-                        setProfile(res.data.user);
-                        Toast.show({ type: 'success', text1: 'Success', text2: 'YouTube Music disconnected' });
-                    } catch { }
-                }
-            }
-        ]);
+        showConfirm('Disconnect YouTube Music', 'Remove YouTube Music link from your account?', async () => {
+            try {
+                const res = await youtubeApi.disconnect();
+                setProfile(res.data.user);
+                Toast.show({ type: 'success', text1: 'Success', text2: 'YouTube Music disconnected' });
+            } catch { }
+        });
     };
 
     /**
@@ -416,18 +423,13 @@ export default function SettingsScreen({ navigation }: any) {
      * Shows confirmation dialog and removes Apple Music access from backend
      */
     const handleDisconnectAppleMusic = () => {
-        Alert.alert('Disconnect Apple Music', 'Remove Apple Music link from your account?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Disconnect', style: 'destructive', onPress: async () => {
-                    try {
-                        const res = await appleMusicApi.disconnect();
-                        setProfile(res.data.user);
-                        Toast.show({ type: 'success', text1: 'Success', text2: 'Apple Music disconnected' });
-                    } catch { }
-                }
-            }
-        ]);
+        showConfirm('Disconnect Apple Music', 'Remove Apple Music link from your account?', async () => {
+            try {
+                const res = await appleMusicApi.disconnect();
+                setProfile(res.data.user);
+                Toast.show({ type: 'success', text1: 'Success', text2: 'Apple Music disconnected' });
+            } catch { }
+        });
     };
 
     /**
@@ -435,18 +437,13 @@ export default function SettingsScreen({ navigation }: any) {
      * Shows confirmation dialog and removes Tidal access from backend
      */
     const handleDisconnectTidal = () => {
-        Alert.alert('Disconnect Tidal', 'Remove Tidal link from your account?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Disconnect', style: 'destructive', onPress: async () => {
-                    try {
-                        const res = await tidalApi.disconnect();
-                        setProfile(res.data.user);
-                        Toast.show({ type: 'success', text1: 'Success', text2: 'Tidal disconnected' });
-                    } catch { }
-                }
-            }
-        ]);
+        showConfirm('Disconnect Tidal', 'Remove Tidal link from your account?', async () => {
+            try {
+                const res = await tidalApi.disconnect();
+                setProfile(res.data.user);
+                Toast.show({ type: 'success', text1: 'Success', text2: 'Tidal disconnected' });
+            } catch { }
+        });
     };
 
     /**
@@ -454,18 +451,13 @@ export default function SettingsScreen({ navigation }: any) {
      * Shows confirmation dialog and removes Qobuz access from backend
      */
     const handleDisconnectQobuz = () => {
-        Alert.alert('Disconnect Qobuz', 'Remove Qobuz link from your account?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Disconnect', style: 'destructive', onPress: async () => {
-                    try {
-                        const res = await qobuzApi.disconnect();
-                        setProfile(res.data.user);
-                        Toast.show({ type: 'success', text1: 'Success', text2: 'Qobuz disconnected' });
-                    } catch { }
-                }
-            }
-        ]);
+        showConfirm('Disconnect Qobuz', 'Remove Qobuz link from your account?', async () => {
+            try {
+                const res = await qobuzApi.disconnect();
+                setProfile(res.data.user);
+                Toast.show({ type: 'success', text1: 'Success', text2: 'Qobuz disconnected' });
+            } catch { }
+        });
     };
 
     /**
@@ -473,18 +465,13 @@ export default function SettingsScreen({ navigation }: any) {
      * Shows confirmation dialog and removes Deezer access from backend
      */
     const handleDisconnectDeezer = () => {
-        Alert.alert('Disconnect Deezer', 'Remove Deezer link from your account?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Disconnect', style: 'destructive', onPress: async () => {
-                    try {
-                        const res = await deezerApi.disconnect();
-                        setProfile(res.data.user);
-                        Toast.show({ type: 'success', text1: 'Success', text2: 'Deezer disconnected' });
-                    } catch { }
-                }
-            }
-        ]);
+        showConfirm('Disconnect Deezer', 'Remove Deezer link from your account?', async () => {
+            try {
+                const res = await deezerApi.disconnect();
+                setProfile(res.data.user);
+                Toast.show({ type: 'success', text1: 'Success', text2: 'Deezer disconnected' });
+            } catch { }
+        });
     };
 
     // ───────────────────────────────────────────────────────────────────────
@@ -496,20 +483,9 @@ export default function SettingsScreen({ navigation }: any) {
      * Shows confirmation dialog, clears auth state, and navigates to login
      */
     const handleLogout = () => {
-        Alert.alert(
-            'Logout',
-            'Are you sure you want to logout?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Logout',
-                    style: 'destructive',
-                    onPress: () => {
-                        logout();
-                    },
-                },
-            ]
-        );
+        showConfirm('Logout', 'Are you sure you want to logout?', () => {
+            logout();
+        });
     };
 
 
@@ -519,21 +495,10 @@ export default function SettingsScreen({ navigation }: any) {
      * TODO: Implement backend API call for account deletion
      */
     const handleDeleteAccount = () => {
-        Alert.alert(
-            'Delete Account',
-            'This action cannot be undone. All your data will be permanently deleted.',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: () => {
-                        // TODO: Implement account deletion API call
-                        Toast.show({ type: 'info', text1: 'Not Implemented', text2: 'Account deletion will be available soon' });
-                    },
-                },
-            ]
-        );
+        showConfirm('Delete Account', 'This action cannot be undone. All your data will be permanently deleted.', () => {
+            // TODO: Implement account deletion API call
+            Toast.show({ type: 'info', text1: 'Not Implemented', text2: 'Account deletion will be available soon' });
+        });
     };
 
     // ───────────────────────────────────────────────────────────────────────
@@ -993,6 +958,43 @@ export default function SettingsScreen({ navigation }: any) {
                     </Text>
                 </View>
             </ScrollView>
+
+            {/* Web-compatible confirmation dialog — replaces Alert.alert which is blocked on web */}
+            <Modal
+                visible={!!confirmDialog}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setConfirmDialog(null)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+                    <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, padding: 24, width: '100%', maxWidth: 340 }}>
+                        <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600', marginBottom: 8 }}>
+                            {confirmDialog?.title}
+                        </Text>
+                        <Text style={{ color: '#8E8E93', fontSize: 14, lineHeight: 20, marginBottom: 24 }}>
+                            {confirmDialog?.message}
+                        </Text>
+                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <TouchableOpacity
+                                onPress={() => setConfirmDialog(null)}
+                                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#2C2C2E', alignItems: 'center' }}
+                            >
+                                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    const action = confirmDialog?.onConfirm;
+                                    setConfirmDialog(null);
+                                    action?.();
+                                }}
+                                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#FF3B30', alignItems: 'center' }}
+                            >
+                                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Confirm</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
