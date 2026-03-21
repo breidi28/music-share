@@ -206,7 +206,7 @@ export default function SettingsScreen({ navigation }: any) {
         if (!user?.id) return;
         setLoadingServices(true);
         try {
-            const scope = 'https://www.googleapis.com/auth/youtube.readonly';
+            const scope = 'https://www.googleapis.com/auth/youtube';
             const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_WEB_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(YOUTUBE_REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&state=${user.id}&access_type=offline&prompt=consent`;
 
             const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');

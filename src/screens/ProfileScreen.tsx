@@ -139,7 +139,7 @@ export default function ProfileScreen({ navigation, route }: any) {
         {
             clientId: GOOGLE_WEB_CLIENT_ID,
             responseType: ResponseType.Code,
-            scopes: ['https://www.googleapis.com/auth/youtube.readonly'],
+            scopes: ['https://www.googleapis.com/auth/youtube'],
             redirectUri: YOUTUBE_REDIRECT_URI,
             usePKCE: false, // Disable PKCE for compatibility
         },
