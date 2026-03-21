@@ -669,14 +669,13 @@ def _build_weekly_recap_summary(user_id: int, week_start: datetime.date) -> dict
     week_start_dt = datetime.combine(week_start, datetime.min.time(), tzinfo=timezone.utc)
     week_end_dt = week_start_dt + timedelta(days=7)
 
+    # ── App posts ──────────────────────────────────────────────────────────
     posts = Post.query.filter(
         Post.user_id == user_id,
         Post.created_at >= week_start_dt,
         Post.created_at < week_end_dt,
     ).all()
 
-    top_artist = None
-    top_genre = None
     post_count = len(posts)
     now_playing_count = 0
     collection_add_count = CollectionItem.query.filter(
@@ -685,91 +684,120 @@ def _build_weekly_recap_summary(user_id: int, week_start: datetime.date) -> dict
         CollectionItem.created_at < week_end_dt,
     ).count()
 
-    if posts:
-        artists: dict[str, int] = {}
-        genres: dict[str, int] = {}
-        tracks: dict[str, dict] = {}
-        albums: dict[str, dict] = {}
-        active_days: set[str] = set()
-        day_counts: dict[str, int] = {}
+    # ── Spotify recently-played scrobbles ──────────────────────────────────
+    spotify_plays = []
+    user = db.session.get(User, user_id)
+    if user and user.spotify_access_token:
+        after_ms = int(week_start_dt.timestamp() * 1000)
+        data, err = _spotify_get(user, f'me/player/recently-played?limit=50&after={after_ms}')
+        if not err and data:
+            for item in data.get('items', []):
+                played_at_str = item.get('played_at', '')
+                try:
+                    played_at = datetime.fromisoformat(played_at_str.replace('Z', '+00:00'))
+                    if week_start_dt <= played_at < week_end_dt:
+                        track = item.get('track') or {}
+                        images = (track.get('album') or {}).get('images') or []
+                        spotify_plays.append({
+                            'title': track.get('name', ''),
+                            'artist': ', '.join(
+                                a['name'] for a in track.get('artists', []) if a.get('name')
+                            ),
+                            'album': (track.get('album') or {}).get('name', ''),
+                            'album_art_url': images[-1].get('url', '') if images else '',
+                            'played_date': played_at.date().isoformat(),
+                        })
+                except Exception:
+                    pass
 
-        for p in posts:
-            if p.artist:
-                artists[p.artist] = artists.get(p.artist, 0) + 1
-            if p.genre:
-                genres[p.genre] = genres.get(p.genre, 0) + 1
-            if p.post_type == 'now_playing':
-                now_playing_count += 1
+    # ── Aggregate posts + Spotify plays ────────────────────────────────────
+    artists: dict[str, int] = {}
+    genres: dict[str, int] = {}
+    tracks: dict[str, dict] = {}
+    albums: dict[str, dict] = {}
+    active_days: set[str] = set()
+    day_counts: dict[str, int] = {}
 
-            track_key = f"{(p.track_title or '').strip().lower()}::{(p.artist or '').strip().lower()}"
-            if track_key not in tracks:
-                tracks[track_key] = {
-                    'title': p.track_title,
+    for p in posts:
+        if p.post_type == 'now_playing':
+            now_playing_count += 1
+        if p.artist:
+            artists[p.artist] = artists.get(p.artist, 0) + 1
+        if p.genre:
+            genres[p.genre] = genres.get(p.genre, 0) + 1
+
+        track_key = f"{(p.track_title or '').strip().lower()}::{(p.artist or '').strip().lower()}"
+        if track_key not in tracks:
+            tracks[track_key] = {
+                'title': p.track_title,
+                'artist': p.artist,
+                'plays': 0,
+                'album_art_url': p.album_art_url or '',
+            }
+        tracks[track_key]['plays'] += 1
+
+        if p.album:
+            album_key = f"{p.album.strip().lower()}::{(p.artist or '').strip().lower()}"
+            if album_key not in albums:
+                albums[album_key] = {
+                    'name': p.album,
                     'artist': p.artist,
                     'plays': 0,
                     'album_art_url': p.album_art_url or '',
                 }
-            tracks[track_key]['plays'] += 1
+            albums[album_key]['plays'] += 1
 
-            if p.album:
-                album_key = f"{p.album.strip().lower()}::{(p.artist or '').strip().lower()}"
-                if album_key not in albums:
-                    albums[album_key] = {
-                        'name': p.album,
-                        'artist': p.artist,
-                        'plays': 0,
-                        'album_art_url': p.album_art_url or '',
-                    }
-                albums[album_key]['plays'] += 1
+        created_date = p.created_at.date().isoformat() if p.created_at else None
+        if created_date:
+            active_days.add(created_date)
+            day_counts[created_date] = day_counts.get(created_date, 0) + 1
 
-            created_date = p.created_at.date().isoformat() if p.created_at else None
-            if created_date:
-                active_days.add(created_date)
-                day_counts[created_date] = day_counts.get(created_date, 0) + 1
+    for sp in spotify_plays:
+        if sp['artist']:
+            artists[sp['artist']] = artists.get(sp['artist'], 0) + 1
 
-        if artists:
-            top_artist = max(artists.items(), key=lambda x: x[1])[0]
-        if genres:
-            top_genre = max(genres.items(), key=lambda x: x[1])[0]
+        track_key = f"{sp['title'].strip().lower()}::{sp['artist'].strip().lower()}"
+        if track_key not in tracks:
+            tracks[track_key] = {
+                'title': sp['title'],
+                'artist': sp['artist'],
+                'plays': 0,
+                'album_art_url': sp['album_art_url'],
+            }
+        tracks[track_key]['plays'] += 1
 
-        top_artists = [
-            {'name': name, 'plays': plays}
-            for name, plays in sorted(artists.items(), key=lambda x: x[1], reverse=True)[:5]
-        ]
+        if sp['album']:
+            album_key = f"{sp['album'].strip().lower()}::{sp['artist'].strip().lower()}"
+            if album_key not in albums:
+                albums[album_key] = {
+                    'name': sp['album'],
+                    'artist': sp['artist'],
+                    'plays': 0,
+                    'album_art_url': sp['album_art_url'],
+                }
+            albums[album_key]['plays'] += 1
 
-        top_tracks = sorted(
-            tracks.values(),
-            key=lambda x: x['plays'],
-            reverse=True,
-        )[:5]
+        if sp['played_date']:
+            active_days.add(sp['played_date'])
+            day_counts[sp['played_date']] = day_counts.get(sp['played_date'], 0) + 1
 
-        top_albums = sorted(
-            albums.values(),
-            key=lambda x: x['plays'],
-            reverse=True,
-        )[:5]
+    top_artist = max(artists.items(), key=lambda x: x[1])[0] if artists else None
+    top_genre = max(genres.items(), key=lambda x: x[1])[0] if genres else None
 
-        busiest_day = None
-        if day_counts:
-            busiest_date_str = max(day_counts.items(), key=lambda x: x[1])[0]
-            try:
-                busiest_day = datetime.strptime(busiest_date_str, '%Y-%m-%d').strftime('%A')
-            except Exception:
-                busiest_day = busiest_date_str
+    top_artists = [
+        {'name': name, 'plays': plays}
+        for name, plays in sorted(artists.items(), key=lambda x: x[1], reverse=True)[:5]
+    ]
+    top_tracks = sorted(tracks.values(), key=lambda x: x['plays'], reverse=True)[:5]
+    top_albums = sorted(albums.values(), key=lambda x: x['plays'], reverse=True)[:5]
 
-        unique_artists = len(artists)
-        unique_tracks = len(tracks)
-        unique_albums = len(albums)
-        active_days_count = len(active_days)
-    else:
-        top_artists = []
-        top_tracks = []
-        top_albums = []
-        busiest_day = None
-        unique_artists = 0
-        unique_tracks = 0
-        unique_albums = 0
-        active_days_count = 0
+    busiest_day = None
+    if day_counts:
+        busiest_date_str = max(day_counts.items(), key=lambda x: x[1])[0]
+        try:
+            busiest_day = datetime.strptime(busiest_date_str, '%Y-%m-%d').strftime('%A')
+        except Exception:
+            busiest_day = busiest_date_str
 
     return {
         'top_artist': top_artist,
@@ -777,11 +805,11 @@ def _build_weekly_recap_summary(user_id: int, week_start: datetime.date) -> dict
         'posts_shared': post_count,
         'now_playing_posts': now_playing_count,
         'collection_adds': collection_add_count,
-        'total_scrobbles': post_count,
-        'unique_artists': unique_artists,
-        'unique_tracks': unique_tracks,
-        'unique_albums': unique_albums,
-        'active_days': active_days_count,
+        'total_scrobbles': post_count + len(spotify_plays),
+        'unique_artists': len(artists),
+        'unique_tracks': len(tracks),
+        'unique_albums': len(albums),
+        'active_days': len(active_days),
         'busiest_day': busiest_day,
         'top_artists': top_artists,
         'top_tracks': top_tracks,
@@ -2793,7 +2821,28 @@ def delete_collab_list_track(list_id, track_id):
 def recap_latest():
     current_user_id = int(get_jwt_identity())
     week_start = _week_start_utc()
-    recap = _get_or_generate_weekly_recap(user_id=current_user_id, week_start=week_start)
+
+    # Always recompute the current week so new Spotify plays are picked up
+    summary = _build_weekly_recap_summary(user_id=current_user_id, week_start=week_start)
+    existing = WeeklyRecap.query.filter_by(user_id=current_user_id, week_start=week_start).first()
+    if existing:
+        existing.summary_json = json.dumps(summary)
+        db.session.commit()
+        recap = existing
+    else:
+        recap = WeeklyRecap(
+            user_id=current_user_id,
+            week_start=week_start,
+            summary_json=json.dumps(summary),
+            image_url='',
+        )
+        db.session.add(recap)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            recap = WeeklyRecap.query.filter_by(user_id=current_user_id, week_start=week_start).first()
+
     return jsonify(recap.to_dict()), 200
 
 
