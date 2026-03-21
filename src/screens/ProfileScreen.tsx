@@ -133,9 +133,8 @@ export default function ProfileScreen({ navigation, route }: any) {
         spotifyDiscovery
     );
 
-    // YouTube OAuth using implicit grant flow (returns access_token directly)
-    // Using the Expo auth proxy URL which is already registered in Google Cloud Console
-    const YOUTUBE_REDIRECT_URI = 'https://auth.expo.io/@breidi282/music-share';
+    // YouTube OAuth — redirect to backend callback which handles token exchange
+    const YOUTUBE_REDIRECT_URI = 'https://music-share-b4r8.onrender.com/api/integrations/youtube/callback';
     const [youtubeRequest, youtubeResponse, youtubePromptAsync] = AuthSession.useAuthRequest(
         {
             clientId: GOOGLE_WEB_CLIENT_ID,
