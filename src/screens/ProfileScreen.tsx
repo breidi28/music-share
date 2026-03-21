@@ -11,7 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
 import { User, Post, PostType, ReactionType } from '../types';
-import { usersApi, postsApi, spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, listenLaterApi, collectionApi } from '../api/endpoints';
+import { usersApi, postsApi, spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, listenLaterApi, collectionApi } from '../api/endpoints';
 import { API_BASE_URL } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
@@ -72,11 +72,12 @@ export default function ProfileScreen({ navigation, route }: any) {
     const [sharingLive, setSharingLive] = useState(false);
     
     // Music service selection
-    const [selectedMusicService, setSelectedMusicService] = useState<'spotify' | 'youtube' | 'apple' | 'tidal' | 'qobuz'>('spotify');
+    const [selectedMusicService, setSelectedMusicService] = useState<'spotify' | 'youtube' | 'apple' | 'tidal' | 'qobuz' | 'deezer'>('spotify');
     const [spotifyTab, setSpotifyTab] = useState<'recent' | 'artists' | 'playlists'>('recent');
     const [youtubeTab, setYoutubeTab] = useState<'history' | 'liked' | 'playlists'>('history');
     const [tidalTab, setTidalTab] = useState<'playlists' | 'favorites'>('playlists');
     const [qobuzTab, setQobuzTab] = useState<'playlists' | 'favorites'>('playlists');
+    const [deezerTab, setDeezerTab] = useState<'playlists' | 'favorites'>('playlists');
     
     // Spotify data
     const [spotifyRecent, setSpotifyRecent] = useState<any[]>([]);
@@ -105,6 +106,11 @@ export default function ProfileScreen({ navigation, route }: any) {
     const [qobuzLoading, setQobuzLoading] = useState(false);
     const [qobuzLoginVisible, setQobuzLoginVisible] = useState(false);
     const [qobuzCredentials, setQobuzCredentials] = useState({ username: '', password: '' });
+
+    // Deezer data
+    const [deezerPlaylists, setDeezerPlaylists] = useState<any[]>([]);
+    const [deezerFavorites, setDeezerFavorites] = useState<any[]>([]);
+    const [deezerLoading, setDeezerLoading] = useState(false);
     const [accentColor, setAccentColor] = useState(Colors.primary);
     
     const [tasteMatch, setTasteMatch] = useState<number | null>(null);
@@ -271,6 +277,70 @@ export default function ProfileScreen({ navigation, route }: any) {
             })
             .finally(() => setAppleLoading(false));
     }, [profile?.id, profile?.has_apple_music_linked]);
+
+    // Fetch Tidal data when profile loads with Tidal linked
+    useEffect(() => {
+        if (!profile?.has_tidal_linked) return;
+        setTidalLoading(true);
+        Promise.all([
+            tidalApi.getPlaylists(profile.id),
+            tidalApi.getFavorites(profile.id),
+        ])
+            .then(([playlists, favorites]) => {
+                setTidalPlaylists(Array.isArray(playlists.data) ? playlists.data : []);
+                setTidalFavorites(Array.isArray(favorites.data) ? favorites.data : []);
+            })
+            .catch(() => { setTidalPlaylists([]); setTidalFavorites([]); })
+            .finally(() => setTidalLoading(false));
+    }, [profile?.id, profile?.has_tidal_linked]);
+
+    // Fetch Qobuz data when profile loads with Qobuz linked
+    useEffect(() => {
+        if (!profile?.has_qobuz_linked) return;
+        setQobuzLoading(true);
+        Promise.all([
+            qobuzApi.getPlaylists(profile.id),
+            qobuzApi.getFavorites(profile.id),
+        ])
+            .then(([playlists, favorites]) => {
+                setQobuzPlaylists(Array.isArray(playlists.data) ? playlists.data : []);
+                setQobuzFavorites(Array.isArray(favorites.data) ? favorites.data : []);
+            })
+            .catch(() => { setQobuzPlaylists([]); setQobuzFavorites([]); })
+            .finally(() => setQobuzLoading(false));
+    }, [profile?.id, profile?.has_qobuz_linked]);
+
+    // Fetch Deezer data when profile loads with Deezer linked
+    useEffect(() => {
+        if (!profile?.has_deezer_linked) return;
+        setDeezerLoading(true);
+        Promise.all([
+            deezerApi.getPlaylists(profile.id),
+            deezerApi.getFavorites(profile.id),
+        ])
+            .then(([playlists, favorites]) => {
+                setDeezerPlaylists(Array.isArray(playlists.data) ? playlists.data : []);
+                setDeezerFavorites(Array.isArray(favorites.data) ? favorites.data : []);
+            })
+            .catch(() => { setDeezerPlaylists([]); setDeezerFavorites([]); })
+            .finally(() => setDeezerLoading(false));
+    }, [profile?.id, profile?.has_deezer_linked]);
+
+    // Auto-select the first connected service when profile loads
+    useEffect(() => {
+        if (!profile) return;
+        const order: Array<typeof selectedMusicService> = ['spotify', 'youtube', 'apple', 'tidal', 'qobuz', 'deezer'];
+        const flags: Record<typeof order[number], boolean> = {
+            spotify: !!profile.has_spotify_linked,
+            youtube: !!profile.has_youtube_linked,
+            apple:   !!profile.has_apple_music_linked,
+            tidal:   !!profile.has_tidal_linked,
+            qobuz:   !!profile.has_qobuz_linked,
+            deezer:  !!profile.has_deezer_linked,
+        };
+        const first = order.find(s => flags[s]);
+        if (first) setSelectedMusicService(first);
+    }, [profile?.id]);
 
     const handleDisconnectSpotify = () => {
         Alert.alert('Disconnect Spotify', 'Remove Spotify link from your account?', [
@@ -765,23 +835,38 @@ export default function ProfileScreen({ navigation, route }: any) {
             )}
 
             {/* ── Music Service Stats ────────────────────────────────── */}
-            {(profile?.has_spotify_linked || profile?.has_youtube_linked || profile?.has_apple_music_linked) && (
+            {(profile?.has_spotify_linked || profile?.has_youtube_linked || profile?.has_apple_music_linked || profile?.has_tidal_linked || profile?.has_qobuz_linked || profile?.has_deezer_linked) && (
                 <View style={{ marginHorizontal: 20, marginTop: 20 }}>
-                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 15, marginBottom: 12 }}>
-                        {selectedMusicService === 'spotify' && 'Spotify Stats'}
-                        {selectedMusicService === 'youtube' && 'YouTube Music'}
-                        {selectedMusicService === 'apple' && 'Apple Music'}
-                    </Text>
 
-                    {/* Spotify tabs */}
+                    {/* Service selector — only shows connected services */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 16 }}>
+                        {([
+                            { key: 'spotify', label: 'Spotify',  color: '#1DB954', flag: profile?.has_spotify_linked },
+                            { key: 'youtube', label: 'YouTube',  color: '#FF3B30', flag: profile?.has_youtube_linked },
+                            { key: 'apple',   label: 'Apple',    color: '#FF2D55', flag: profile?.has_apple_music_linked },
+                            { key: 'tidal',   label: 'Tidal',    color: '#00FFFF', flag: profile?.has_tidal_linked },
+                            { key: 'qobuz',   label: 'Qobuz',    color: '#00B4D8', flag: profile?.has_qobuz_linked },
+                            { key: 'deezer',  label: 'Deezer',   color: '#A238FF', flag: profile?.has_deezer_linked },
+                        ] as const).filter(s => s.flag).map(s => {
+                            const active = selectedMusicService === s.key;
+                            return (
+                                <TouchableOpacity
+                                    key={s.key}
+                                    onPress={() => setSelectedMusicService(s.key)}
+                                    style={{ paddingHorizontal: 16, paddingVertical: 7, borderRadius: 100, borderWidth: 1.5, backgroundColor: active ? s.color + '22' : 'rgba(255,255,255,0.05)', borderColor: active ? s.color : 'rgba(255,255,255,0.1)' }}
+                                >
+                                    <Text style={{ fontSize: 12, fontWeight: '700', color: active ? s.color : '#9ca3af' }}>{s.label}</Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
+
+                    {/* Sub-tabs for the active service */}
                     {selectedMusicService === 'spotify' && profile?.has_spotify_linked && (
                         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
                             {(['recent', 'artists', 'playlists'] as const).map(tab => (
-                                <TouchableOpacity
-                                    key={tab}
-                                    onPress={() => setSpotifyTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: spotifyTab === tab ? Colors.primary : 'rgba(255,255,255,0.05)', borderColor: spotifyTab === tab ? Colors.primary : 'rgba(255,255,255,0.1)' }}
-                                >
+                                <TouchableOpacity key={tab} onPress={() => setSpotifyTab(tab)}
+                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: spotifyTab === tab ? Colors.primary : 'rgba(255,255,255,0.05)', borderColor: spotifyTab === tab ? Colors.primary : 'rgba(255,255,255,0.1)' }}>
                                     <Text style={{ fontSize: 12, fontWeight: '600', color: spotifyTab === tab ? 'white' : '#9ca3af' }}>
                                         {tab === 'recent' ? 'Recent' : tab === 'artists' ? 'Top Artists' : 'Playlists'}
                                     </Text>
@@ -789,93 +874,205 @@ export default function ProfileScreen({ navigation, route }: any) {
                             ))}
                         </View>
                     )}
+                    {selectedMusicService === 'youtube' && profile?.has_youtube_linked && (
+                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                            {(['history', 'liked', 'playlists'] as const).map(tab => (
+                                <TouchableOpacity key={tab} onPress={() => setYoutubeTab(tab)}
+                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: youtubeTab === tab ? '#FF3B30' : 'rgba(255,255,255,0.05)', borderColor: youtubeTab === tab ? '#FF3B30' : 'rgba(255,255,255,0.1)' }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: youtubeTab === tab ? 'white' : '#9ca3af' }}>
+                                        {tab === 'history' ? 'History' : tab === 'liked' ? 'Liked' : 'Playlists'}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+                    {(selectedMusicService === 'tidal' && profile?.has_tidal_linked) && (
+                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                            {(['playlists', 'favorites'] as const).map(tab => (
+                                <TouchableOpacity key={tab} onPress={() => setTidalTab(tab)}
+                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: tidalTab === tab ? '#00FFFF' : 'rgba(255,255,255,0.05)', borderColor: tidalTab === tab ? '#00FFFF' : 'rgba(255,255,255,0.1)' }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: tidalTab === tab ? '#000' : '#9ca3af' }}>
+                                        {tab === 'playlists' ? 'Playlists' : 'Favorites'}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+                    {(selectedMusicService === 'qobuz' && profile?.has_qobuz_linked) && (
+                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                            {(['playlists', 'favorites'] as const).map(tab => (
+                                <TouchableOpacity key={tab} onPress={() => setQobuzTab(tab)}
+                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: qobuzTab === tab ? '#00B4D8' : 'rgba(255,255,255,0.05)', borderColor: qobuzTab === tab ? '#00B4D8' : 'rgba(255,255,255,0.1)' }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: qobuzTab === tab ? 'white' : '#9ca3af' }}>
+                                        {tab === 'playlists' ? 'Playlists' : 'Favorites'}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+                    {(selectedMusicService === 'deezer' && profile?.has_deezer_linked) && (
+                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                            {(['playlists', 'favorites'] as const).map(tab => (
+                                <TouchableOpacity key={tab} onPress={() => setDeezerTab(tab)}
+                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: deezerTab === tab ? '#A238FF' : 'rgba(255,255,255,0.05)', borderColor: deezerTab === tab ? '#A238FF' : 'rgba(255,255,255,0.1)' }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: deezerTab === tab ? 'white' : '#9ca3af' }}>
+                                        {tab === 'playlists' ? 'Playlists' : 'Favorites'}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
 
-                    {/* Spotify Data */}
+                    {/* ── Spotify ── */}
                     {selectedMusicService === 'spotify' && profile?.has_spotify_linked && (
-                        spotifyLoading ? (
-                            <ActivityIndicator color="#34C759" />
-                        ) : (
+                        spotifyLoading ? <ActivityIndicator color="#1DB954" /> : (
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
                                 {spotifyTab === 'recent' && spotifyRecent.map((t, i) => (
                                     <TouchableOpacity key={i} onPress={() => t.spotify_url && Linking.openURL(t.spotify_url)} style={{ width: 120 }}>
-                                        {t.album_art_url
-                                            ? <Image source={{ uri: t.album_art_url }} style={{ width: 120, height: 120, borderRadius: 8 }} />
-                                            : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E' }} />}
+                                        {t.album_art_url ? <Image source={{ uri: t.album_art_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E' }} />}
                                         <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{t.track_title}</Text>
-                                        <Text style={{ color: '#8E8E93', fontSize: 13, marginTop: 2 }} numberOfLines={1}>{t.artist}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{t.artist}</Text>
                                     </TouchableOpacity>
                                 ))}
                                 {spotifyTab === 'artists' && spotifyArtists.map((a, i) => (
                                     <TouchableOpacity key={i} onPress={() => a.spotify_url && Linking.openURL(a.spotify_url)} style={{ width: 100, alignItems: 'center' }}>
-                                        {a.image_url
-                                            ? <Image source={{ uri: a.image_url }} style={{ width: 100, height: 100, borderRadius: 50 }} />
-                                            : <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: '#2C2C2E' }} />}
+                                        {a.image_url ? <Image source={{ uri: a.image_url }} style={{ width: 100, height: 100, borderRadius: 50 }} /> : <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: '#2C2C2E' }} />}
                                         <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8, textAlign: 'center' }} numberOfLines={1}>{a.name}</Text>
                                         {a.genres?.[0] && <Text style={{ color: '#8E8E93', fontSize: 12, textAlign: 'center', marginTop: 2 }} numberOfLines={1}>{a.genres[0]}</Text>}
                                     </TouchableOpacity>
                                 ))}
                                 {spotifyTab === 'playlists' && spotifyPlaylists.map((p, i) => (
                                     <TouchableOpacity key={i} onPress={() => p.spotify_url && Linking.openURL(p.spotify_url)} style={{ width: 120 }}>
-                                        {p.image_url
-                                            ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} />
-                                            : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}>
-                                                <FontAwesome5 name="list-ul" size={24} color="#8E8E93" /></View>}
+                                        {p.image_url ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}><FontAwesome5 name="list-ul" size={24} color="#8E8E93" /></View>}
                                         <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{p.name}</Text>
-                                        <Text style={{ color: '#8E8E93', fontSize: 13, marginTop: 2 }} numberOfLines={1}>{p.track_count} tracks</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{p.track_count} tracks</Text>
                                     </TouchableOpacity>
                                 ))}
-                                {((spotifyTab === 'recent' && spotifyRecent.length === 0) ||
-                                    (spotifyTab === 'artists' && spotifyArtists.length === 0) ||
-                                    (spotifyTab === 'playlists' && spotifyPlaylists.length === 0)) && (
-                                    <Text style={{ color: '#8E8E93', fontSize: 15, paddingVertical: 12, paddingHorizontal: 16 }}>
-                                        {spotifyTab === 'recent' ? 'No recent tracks' : spotifyTab === 'artists' ? 'No top artists yet' : 'No playlists found'}
-                                    </Text>
+                                {((spotifyTab === 'recent' && spotifyRecent.length === 0) || (spotifyTab === 'artists' && spotifyArtists.length === 0) || (spotifyTab === 'playlists' && spotifyPlaylists.length === 0)) && (
+                                    <Text style={{ color: '#8E8E93', fontSize: 14, paddingVertical: 12 }}>Nothing here yet</Text>
                                 )}
                             </ScrollView>
                         )
                     )}
 
-                    {/* YouTube Music Data */}
+                    {/* ── YouTube Music ── */}
                     {selectedMusicService === 'youtube' && profile?.has_youtube_linked && (
-                        youtubeLoading ? (
-                            <ActivityIndicator color="#FF3B30" />
-                        ) : (
+                        youtubeLoading ? <ActivityIndicator color="#FF3B30" /> : (
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
-                                {youtubePlaylists.map((p, i) => (
+                                {youtubeTab === 'history' && youtubeHistory.map((t, i) => (
+                                    <View key={i} style={{ width: 120 }}>
+                                        {t.image_url ? <Image source={{ uri: t.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}><FontAwesome5 name="youtube" size={24} color="#FF3B30" /></View>}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{t.title}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{t.artist}</Text>
+                                    </View>
+                                ))}
+                                {youtubeTab === 'liked' && youtubeLiked.map((t, i) => (
+                                    <View key={i} style={{ width: 120 }}>
+                                        {t.image_url ? <Image source={{ uri: t.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}><FontAwesome5 name="thumbs-up" size={24} color="#FF3B30" /></View>}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{t.title}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{t.artist}</Text>
+                                    </View>
+                                ))}
+                                {youtubeTab === 'playlists' && youtubePlaylists.map((p, i) => (
                                     <TouchableOpacity key={i} onPress={() => p.youtube_url && Linking.openURL(p.youtube_url)} style={{ width: 120 }}>
-                                        {p.image_url
-                                            ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} />
-                                            : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}>
-                                                <FontAwesome5 name="youtube" size={24} color="#FF3B30" /></View>}
+                                        {p.image_url ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}><FontAwesome5 name="youtube" size={24} color="#FF3B30" /></View>}
                                         <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{p.name}</Text>
-                                        <Text style={{ color: '#8E8E93', fontSize: 13, marginTop: 2 }} numberOfLines={1}>{p.track_count} videos</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{p.track_count} videos</Text>
                                     </TouchableOpacity>
                                 ))}
-                                {youtubePlaylists.length === 0 && (
-                                    <Text style={{ color: '#8E8E93', fontSize: 15, paddingVertical: 12, paddingHorizontal: 16 }}>No playlists found</Text>
+                                {((youtubeTab === 'history' && youtubeHistory.length === 0) || (youtubeTab === 'liked' && youtubeLiked.length === 0) || (youtubeTab === 'playlists' && youtubePlaylists.length === 0)) && (
+                                    <Text style={{ color: '#8E8E93', fontSize: 14, paddingVertical: 12 }}>Nothing here yet</Text>
                                 )}
                             </ScrollView>
                         )
                     )}
 
-                    {/* Apple Music Data */}
+                    {/* ── Apple Music ── */}
                     {selectedMusicService === 'apple' && profile?.has_apple_music_linked && (
-                        appleLoading ? (
-                            <ActivityIndicator color="#FF2D55" />
-                        ) : (
+                        appleLoading ? <ActivityIndicator color="#FF2D55" /> : (
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
                                 {applePlaylists.map((p, i) => (
                                     <TouchableOpacity key={i} onPress={() => p.apple_url && Linking.openURL(p.apple_url)} style={{ width: 120 }}>
-                                        {p.image_url
-                                            ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} />
-                                            : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}>
-                                                <FontAwesome5 name="apple" size={24} color="#FF2D55" /></View>}
+                                        {p.image_url ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}><FontAwesome5 name="apple" size={24} color="#FF2D55" /></View>}
                                         <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{p.name}</Text>
-                                        <Text style={{ color: '#8E8E93', fontSize: 13, marginTop: 2 }} numberOfLines={1}>{p.track_count} tracks</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{p.track_count} tracks</Text>
                                     </TouchableOpacity>
                                 ))}
-                                {applePlaylists.length === 0 && (
-                                    <Text style={{ color: '#8E8E93', fontSize: 15, paddingVertical: 12, paddingHorizontal: 16 }}>No playlists found</Text>
+                                {applePlaylists.length === 0 && <Text style={{ color: '#8E8E93', fontSize: 14, paddingVertical: 12 }}>Nothing here yet</Text>}
+                            </ScrollView>
+                        )
+                    )}
+
+                    {/* ── Tidal ── */}
+                    {selectedMusicService === 'tidal' && profile?.has_tidal_linked && (
+                        tidalLoading ? <ActivityIndicator color="#00FFFF" /> : (
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
+                                {tidalTab === 'playlists' && tidalPlaylists.map((p, i) => (
+                                    <TouchableOpacity key={i} onPress={() => p.tidal_url && Linking.openURL(p.tidal_url)} style={{ width: 120 }}>
+                                        {p.image_url ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}><FontAwesome5 name="list-ul" size={24} color="#00FFFF" /></View>}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{p.name}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{p.track_count} tracks</Text>
+                                    </TouchableOpacity>
+                                ))}
+                                {tidalTab === 'favorites' && tidalFavorites.map((t, i) => (
+                                    <View key={i} style={{ width: 120 }}>
+                                        {t.image_url ? <Image source={{ uri: t.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E' }} />}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{t.title}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{t.artist}</Text>
+                                    </View>
+                                ))}
+                                {((tidalTab === 'playlists' && tidalPlaylists.length === 0) || (tidalTab === 'favorites' && tidalFavorites.length === 0)) && (
+                                    <Text style={{ color: '#8E8E93', fontSize: 14, paddingVertical: 12 }}>Nothing here yet</Text>
+                                )}
+                            </ScrollView>
+                        )
+                    )}
+
+                    {/* ── Qobuz ── */}
+                    {selectedMusicService === 'qobuz' && profile?.has_qobuz_linked && (
+                        qobuzLoading ? <ActivityIndicator color="#00B4D8" /> : (
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
+                                {qobuzTab === 'playlists' && qobuzPlaylists.map((p, i) => (
+                                    <TouchableOpacity key={i} onPress={() => p.qobuz_url && Linking.openURL(p.qobuz_url)} style={{ width: 120 }}>
+                                        {p.image_url ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}><FontAwesome5 name="list-ul" size={24} color="#00B4D8" /></View>}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{p.name}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{p.track_count} tracks</Text>
+                                    </TouchableOpacity>
+                                ))}
+                                {qobuzTab === 'favorites' && qobuzFavorites.map((t, i) => (
+                                    <View key={i} style={{ width: 120 }}>
+                                        {t.image_url ? <Image source={{ uri: t.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E' }} />}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{t.title}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{t.artist}</Text>
+                                    </View>
+                                ))}
+                                {((qobuzTab === 'playlists' && qobuzPlaylists.length === 0) || (qobuzTab === 'favorites' && qobuzFavorites.length === 0)) && (
+                                    <Text style={{ color: '#8E8E93', fontSize: 14, paddingVertical: 12 }}>Nothing here yet</Text>
+                                )}
+                            </ScrollView>
+                        )
+                    )}
+
+                    {/* ── Deezer ── */}
+                    {selectedMusicService === 'deezer' && profile?.has_deezer_linked && (
+                        deezerLoading ? <ActivityIndicator color="#A238FF" /> : (
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
+                                {deezerTab === 'playlists' && deezerPlaylists.map((p, i) => (
+                                    <TouchableOpacity key={i} onPress={() => p.deezer_url && Linking.openURL(p.deezer_url)} style={{ width: 120 }}>
+                                        {p.image_url ? <Image source={{ uri: p.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E', justifyContent: 'center', alignItems: 'center' }}><FontAwesome5 name="list-ul" size={24} color="#A238FF" /></View>}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{p.name}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{p.track_count} tracks</Text>
+                                    </TouchableOpacity>
+                                ))}
+                                {deezerTab === 'favorites' && deezerFavorites.map((t, i) => (
+                                    <View key={i} style={{ width: 120 }}>
+                                        {t.image_url ? <Image source={{ uri: t.image_url }} style={{ width: 120, height: 120, borderRadius: 8 }} /> : <View style={{ width: 120, height: 120, borderRadius: 8, backgroundColor: '#2C2C2E' }} />}
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>{t.title}</Text>
+                                        <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{t.artist}</Text>
+                                    </View>
+                                ))}
+                                {((deezerTab === 'playlists' && deezerPlaylists.length === 0) || (deezerTab === 'favorites' && deezerFavorites.length === 0)) && (
+                                    <Text style={{ color: '#8E8E93', fontSize: 14, paddingVertical: 12 }}>Nothing here yet</Text>
                                 )}
                             </ScrollView>
                         )
