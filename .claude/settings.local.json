@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls -1 /c/Users/vladb/Desktop/proiecte/music-share/src/screens/*.tsx)"
+      "Bash(ls -1 /c/Users/vladb/Desktop/proiecte/music-share/src/screens/*.tsx)",
+      "Bash(python3 -c \"from ytmusicapi import YTMusic, OAuthCredentials; help\\(OAuthCredentials.__init__\\)\")",
+      "Bash(python -c \"from ytmusicapi import YTMusic; import inspect; print\\(inspect.signature\\(YTMusic.__init__\\)\\)\")",
+      "Bash(python -c \"from ytmusicapi import OAuthCredentials; import inspect; print\\(inspect.signature\\(OAuthCredentials.__init__\\)\\); print\\(inspect.getsource\\(OAuthCredentials.__init__\\)\\)\")"
     ]
   }
 }

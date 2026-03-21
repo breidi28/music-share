@@ -923,7 +923,7 @@ def get_me():
 
 import requests
 import base64
-from ytmusicapi import YTMusic
+from ytmusicapi import YTMusic, OAuthCredentials
 import tidalapi
 
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID', '')
@@ -1346,18 +1346,21 @@ def _get_ytmusic_client(user):
             return None, str(e)
 
     try:
-        # Create OAuth credentials for ytmusicapi
-        oauth_credentials = {
+        import json as _json
+        # auth= receives the token data; oauth_credentials= receives the client id/secret
+        # for automatic token refresh by ytmusicapi
+        token_data = _json.dumps({
             "access_token": user.youtube_access_token,
             "refresh_token": user.youtube_refresh_token,
             "token_type": "Bearer",
             "expires_in": 3600,
-            "client_id": YOUTUBE_CLIENT_ID,
-            "client_secret": YOUTUBE_CLIENT_SECRET
-        }
-        
-        # Initialize YTMusic with OAuth
-        ytmusic = YTMusic(oauth_credentials=oauth_credentials)
+            "scope": "https://www.googleapis.com/auth/youtube.readonly",
+        })
+        oauth_creds = OAuthCredentials(
+            client_id=YOUTUBE_CLIENT_ID,
+            client_secret=YOUTUBE_CLIENT_SECRET,
+        )
+        ytmusic = YTMusic(auth=token_data, oauth_credentials=oauth_creds)
         return ytmusic, None
     except Exception as e:
         app.logger.error(f'[YouTube Music] Client creation failed for user {user.id}: {str(e)}')
