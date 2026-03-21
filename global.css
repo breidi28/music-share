@@ -1,3 +1,27 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+  Web-only native-feel overrides.
+  These are ignored by NativeWind on native platforms and only apply
+  when the app is rendered in a browser via react-native-web.
+*/
+@layer base {
+  /* Faster taps on interactive elements — removes the 300ms delay */
+  button,
+  [role="button"],
+  a {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Prevent accidental text selection while swiping/scrolling */
+  nav,
+  header,
+  [role="tablist"],
+  [role="tab"] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}

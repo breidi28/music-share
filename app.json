@@ -33,7 +33,13 @@
       "package": "com.breidi282.musicshare"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "MusicShare",
+      "shortName": "MusicShare",
+      "description": "Share music moments with friends",
+      "themeColor": "#0A0A0F",
+      "backgroundColor": "#0A0A0F",
+      "lang": "en"
     },
     "plugins": [
       "expo-web-browser",

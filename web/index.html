@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <!--
+      viewport-fit=cover: content extends under the iOS notch/home bar
+      user-scalable=no: prevents pinch-zoom (native apps don't pinch-zoom)
+      maximum-scale=1: prevents double-tap zoom on iOS
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>MusicShare</title>
+
+    <!-- PWA manifest (enables "Add to Home Screen" + install prompt) -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Android Chrome theme color (colors the browser/status bar) -->
+    <meta name="theme-color" content="#0A0A0F" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- iOS Safari PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!--
+      black-translucent: app content extends under the status bar
+      (pairs with padding-top: env(safe-area-inset-top) in your layout)
+    -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MusicShare" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+
+    <!-- Splash screen background while JS loads -->
+    <meta name="msapplication-TileColor" content="#0A0A0F" />
+
+    <style id="expo-reset">
+      /* Full-height layout — required by react-native-web */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      /* Match app background so there's no white flash on load */
+      html {
+        background-color: #0a0a0f;
+        /* Prevent the iOS rubber-band / pull-to-refresh on the page itself */
+        overscroll-behavior-y: none;
+      }
+
+      body {
+        overflow: hidden;
+        background-color: #0a0a0f;
+        overscroll-behavior: none;
+        /* Momentum scrolling inside scroll containers */
+        -webkit-overflow-scrolling: touch;
+        /* Crisp text rendering */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+      }
+
+      /* Root element fills the viewport */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+
+      /* ── Native-feel touch tweaks ─────────────────────────────────── */
+
+      /* Remove the grey/blue flash that appears on tap in mobile browsers */
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* Prevent the iOS callout popup (Copy/Open/Share) on long-press */
+      img,
+      a {
+        -webkit-touch-callout: none;
+        -webkit-user-drag: none;
+      }
+
+      /*
+        touch-action: manipulation removes the 300 ms click delay on older
+        mobile browsers without disabling pinch-zoom on scroll containers.
+      */
+      button,
+      [role="button"],
+      a,
+      input,
+      select,
+      textarea,
+      label {
+        touch-action: manipulation;
+      }
+
+      /* Hide scrollbars on webkit (they appear in desktop Chrome/Safari) */
+      ::-webkit-scrollbar {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <!-- Register service worker for PWA installability -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {
+            // SW registration failed — app still works, just not installable
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

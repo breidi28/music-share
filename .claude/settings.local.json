@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -1 /c/Users/vladb/Desktop/proiecte/music-share/src/screens/*.tsx)"
+    ]
+  }
+}
