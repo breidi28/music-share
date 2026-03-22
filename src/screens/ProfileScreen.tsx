@@ -759,23 +759,42 @@ export default function ProfileScreen({ navigation, route }: any) {
 
                 {/* Actions Row */}
                 {!isMe && (
-                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 24, width: '100%' }}>
+                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 24, width: '100%', paddingHorizontal: 4 }}>
                         <>
                             <TouchableOpacity
                                 onPress={handleFollow}
-                                style={{ flex: 1, borderRadius: 12, paddingVertical: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: profile?.is_following ? '#2C2C2E' : Colors.primary }}
+                                style={{ 
+                                    flex: 1, 
+                                    borderRadius: 14, 
+                                    paddingVertical: 12, 
+                                    justifyContent: 'center', 
+                                    alignItems: 'center', 
+                                    backgroundColor: profile?.is_following ? 'rgba(255,255,255,0.15)' : accentColor,
+                                    borderWidth: profile?.is_following ? 1 : 0,
+                                    borderColor: 'rgba(255,255,255,0.2)'
+                                }}
                             >
-                                <Text style={{ color: 'white', fontWeight: '600', fontSize: 15 }}>{profile?.is_following ? 'Following' : 'Follow'}</Text>
+                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>{profile?.is_following ? 'Following' : 'Follow'}</Text>
                             </TouchableOpacity>
                             {tasteMatch !== null && (
-                                <View style={{ backgroundColor: 'rgba(191,90,242,0.15)', borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center' }}>
-                                    <Text style={{ color: '#BF5AF2', fontWeight: '700', fontSize: 15 }}>{tasteMatch}%</Text>
-                                    <Text style={{ color: '#BF5AF2', fontSize: 10, fontWeight: '600', marginTop: 2 }}>MATCH</Text>
+                                <View style={{ 
+                                    backgroundColor: 'rgba(191,90,242,0.15)', 
+                                    borderRadius: 14, 
+                                    paddingHorizontal: 20, 
+                                    justifyContent: 'center', 
+                                    alignItems: 'center',
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(191,90,242,0.3)'
+                                }}>
+                                    <View style={{ alignItems: 'center' }}>
+                                        <Text style={{ color: '#BF5AF2', fontWeight: '800', fontSize: 16 }}>{tasteMatch}%</Text>
+                                        <Text style={{ color: '#BF5AF2', fontSize: 9, fontWeight: '700', marginTop: -2, letterSpacing: 0.5 }}>MATCH</Text>
+                                    </View>
                                 </View>
                             )}
                         </>
                     </View>
-                )}
+                ) /* Actions Row End */}
             </View>
 
             {/* ── Stats card (Inset Grouped Style) ────────────────────── */}
@@ -855,9 +874,21 @@ export default function ProfileScreen({ navigation, route }: any) {
                                 <TouchableOpacity
                                     key={s.key}
                                     onPress={() => setSelectedMusicService(s.key)}
-                                    style={{ paddingHorizontal: 16, paddingVertical: 7, borderRadius: 100, borderWidth: 1.5, backgroundColor: active ? s.color + '22' : 'rgba(255,255,255,0.05)', borderColor: active ? s.color : 'rgba(255,255,255,0.1)' }}
+                                    style={{ 
+                                        paddingHorizontal: 16, 
+                                        paddingVertical: 8, 
+                                        borderRadius: 20, 
+                                        backgroundColor: active ? s.color : 'rgba(255,255,255,0.12)', 
+                                        shadowColor: active ? s.color : 'transparent',
+                                        shadowOffset: { width: 0, height: 4 },
+                                        shadowOpacity: 0.3,
+                                        shadowRadius: 8,
+                                        elevation: 4
+                                    }}
                                 >
-                                    <Text style={{ fontSize: 12, fontWeight: '700', color: active ? s.color : '#9ca3af' }}>{s.label}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={{ fontSize: 13, fontWeight: '700', color: active ? 'white' : 'rgba(255,255,255,0.7)' }}>{s.label}</Text>
+                                    </View>
                                 </TouchableOpacity>
                             );
                         })}
@@ -865,11 +896,11 @@ export default function ProfileScreen({ navigation, route }: any) {
 
                     {/* Sub-tabs for the active service */}
                     {selectedMusicService === 'spotify' && profile?.has_spotify_linked && (
-                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['recent', 'artists', 'playlists'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setSpotifyTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: spotifyTab === tab ? Colors.primary : 'rgba(255,255,255,0.05)', borderColor: spotifyTab === tab ? Colors.primary : 'rgba(255,255,255,0.1)' }}>
-                                    <Text style={{ fontSize: 12, fontWeight: '600', color: spotifyTab === tab ? 'white' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: spotifyTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: spotifyTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: spotifyTab === tab ? 'white' : '#9ca3af' }}>
                                         {tab === 'recent' ? 'Recent' : tab === 'artists' ? 'Top Artists' : 'Playlists'}
                                     </Text>
                                 </TouchableOpacity>
@@ -877,11 +908,11 @@ export default function ProfileScreen({ navigation, route }: any) {
                         </View>
                     )}
                     {selectedMusicService === 'youtube' && profile?.has_youtube_linked && (
-                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['history', 'liked', 'playlists'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setYoutubeTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: youtubeTab === tab ? '#FF3B30' : 'rgba(255,255,255,0.05)', borderColor: youtubeTab === tab ? '#FF3B30' : 'rgba(255,255,255,0.1)' }}>
-                                    <Text style={{ fontSize: 12, fontWeight: '600', color: youtubeTab === tab ? 'white' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: youtubeTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: youtubeTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: youtubeTab === tab ? 'white' : '#9ca3af' }}>
                                         {tab === 'history' ? 'History' : tab === 'liked' ? 'Liked' : 'Playlists'}
                                     </Text>
                                 </TouchableOpacity>
@@ -889,11 +920,11 @@ export default function ProfileScreen({ navigation, route }: any) {
                         </View>
                     )}
                     {(selectedMusicService === 'tidal' && profile?.has_tidal_linked) && (
-                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['playlists', 'favorites'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setTidalTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: tidalTab === tab ? '#00FFFF' : 'rgba(255,255,255,0.05)', borderColor: tidalTab === tab ? '#00FFFF' : 'rgba(255,255,255,0.1)' }}>
-                                    <Text style={{ fontSize: 12, fontWeight: '600', color: tidalTab === tab ? '#000' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: tidalTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: tidalTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: tidalTab === tab ? 'white' : '#9ca3af' }}>
                                         {tab === 'playlists' ? 'Playlists' : 'Favorites'}
                                     </Text>
                                 </TouchableOpacity>
@@ -901,11 +932,11 @@ export default function ProfileScreen({ navigation, route }: any) {
                         </View>
                     )}
                     {(selectedMusicService === 'qobuz' && profile?.has_qobuz_linked) && (
-                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['playlists', 'favorites'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setQobuzTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: qobuzTab === tab ? '#00B4D8' : 'rgba(255,255,255,0.05)', borderColor: qobuzTab === tab ? '#00B4D8' : 'rgba(255,255,255,0.1)' }}>
-                                    <Text style={{ fontSize: 12, fontWeight: '600', color: qobuzTab === tab ? 'white' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: qobuzTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: qobuzTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: qobuzTab === tab ? 'white' : '#9ca3af' }}>
                                         {tab === 'playlists' ? 'Playlists' : 'Favorites'}
                                     </Text>
                                 </TouchableOpacity>
@@ -913,11 +944,11 @@ export default function ProfileScreen({ navigation, route }: any) {
                         </View>
                     )}
                     {(selectedMusicService === 'deezer' && profile?.has_deezer_linked) && (
-                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['playlists', 'favorites'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setDeezerTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, borderWidth: 1, backgroundColor: deezerTab === tab ? '#A238FF' : 'rgba(255,255,255,0.05)', borderColor: deezerTab === tab ? '#A238FF' : 'rgba(255,255,255,0.1)' }}>
-                                    <Text style={{ fontSize: 12, fontWeight: '600', color: deezerTab === tab ? 'white' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: deezerTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: deezerTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: deezerTab === tab ? 'white' : '#9ca3af' }}>
                                         {tab === 'playlists' ? 'Playlists' : 'Favorites'}
                                     </Text>
                                 </TouchableOpacity>
@@ -1091,10 +1122,20 @@ export default function ProfileScreen({ navigation, route }: any) {
                             <TouchableOpacity
                                 key={tab.key}
                                 onPress={() => setFilter(tab.key)}
-                                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: active ? accentColor : '#1C1C1E' }}
+                                style={{ 
+                                    flexDirection: 'row', 
+                                    alignItems: 'center', 
+                                    gap: 6, 
+                                    paddingHorizontal: 20, 
+                                    paddingVertical: 10, 
+                                    borderRadius: 14, 
+                                    backgroundColor: active ? accentColor : 'rgba(255,255,255,0.08)',
+                                    borderWidth: 1,
+                                    borderColor: active ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)'
+                                }}
                             >
                                 <Ionicons name={tab.icon} size={15} color={active ? 'white' : '#8E8E93'} />
-                                <Text style={{ fontSize: 15, fontWeight: '600', color: active ? 'white' : '#8E8E93' }}>{tab.label}</Text>
+                                <Text style={{ fontSize: 15, fontWeight: '700', color: active ? 'white' : '#8E8E93' }}>{tab.label}</Text>
                             </TouchableOpacity>
                         );
                     })}
