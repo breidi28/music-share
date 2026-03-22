@@ -15,6 +15,7 @@ import { usersApi, postsApi, spotifyApi, youtubeApi, appleMusicApi, tidalApi, qo
 import { API_BASE_URL } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { Colors, getContrastColor } from '../theme';
+import { useSettingsStore } from '../store/settingsStore';
 import PostCard from '../components/PostCard';
 import CommentsModal from '../components/CommentsModal';
 
@@ -517,6 +518,8 @@ export default function ProfileScreen({ navigation, route }: any) {
     }, [targetId, filter]);
 
     useEffect(() => { setLoading(true); load(); }, [filter]);
+
+    const { showKawarpBackground } = useSettingsStore();
 
     useEffect(() => {
         if (isMe && openEdit && profile) {
@@ -1146,7 +1149,9 @@ export default function ProfileScreen({ navigation, route }: any) {
 
     return (
         <View className="flex-1 bg-black">
-            <KawarpBackground accent={accentColor} avatarUrl={profile?.avatar_url} />
+            {showKawarpBackground && (
+                <KawarpBackground accent={accentColor} avatarUrl={profile?.avatar_url} />
+            )}
             {renderTopNav()}
             <FlatList
                 data={posts}

@@ -26,6 +26,7 @@ import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
+import { useSettingsStore } from '../store/settingsStore';
 import { HIG } from '../theme/hig';
 import { UtilityScreen } from '../theme/utilityScreen';
 import { spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, usersApi, notificationsApi } from '../api/endpoints';
@@ -97,6 +98,7 @@ const deezerDiscovery = {
 export default function SettingsScreen({ navigation }: any) {
     const insets = useSafeAreaInsets();
     const { user, logout } = useAuthStore();
+    const { showKawarpBackground, setShowKawarpBackground } = useSettingsStore();
 
     // ───────────────────────────────────────────────────────────────────────
     // State Management
@@ -814,6 +816,17 @@ export default function SettingsScreen({ navigation }: any) {
                         onDisconnect={handleDisconnectDeezer}
                         color="#FF0092"
                         loading={loadingServices}
+                        isLast
+                    />
+                </SettingSection>
+                
+                <SettingSection title="Display">
+                    <SettingRow
+                        icon="sparkles-outline"
+                        label="Animated Background"
+                        isSwitch
+                        switchValue={showKawarpBackground}
+                        onSwitchChange={(v: boolean) => setShowKawarpBackground(v)}
                         isLast
                     />
                 </SettingSection>
