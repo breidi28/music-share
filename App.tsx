@@ -7,6 +7,7 @@ import Toast, { ToastConfig, ToastProps } from 'react-native-toast-message';
 import { View, Text } from 'react-native';
 import { useAuthStore } from './src/store/authStore';
 import AppNavigator from './src/navigation/AppNavigator';
+import { Analytics } from "@vercel/analytics/next";
 
 import './global.css';
 
