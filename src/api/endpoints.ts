@@ -98,9 +98,9 @@ export const spotifyApi = {
 export const youtubeApi = {
     callback: (code: string, redirectUri: string) => client.post('/integrations/youtube/callback', { code, redirect_uri: redirectUri }),
     linkWithToken: (accessToken: string) => client.post('/integrations/youtube/link-token', { access_token: accessToken }),
-    getPlaylists: (userId?: number) => client.get('/integrations/youtube/playlists', { params: { user_id: userId } }),
-    getHistory: (userId?: number) => client.get('/integrations/youtube/history', { params: { user_id: userId } }),
-    getLiked: (userId?: number) => client.get('/integrations/youtube/liked', { params: { user_id: userId } }),
+    getPlaylists: (userId?: number) => client.get('/integrations/youtube/playlists', { params: { user_id: userId }, suppressToast: true }),
+    getHistory: (userId?: number) => client.get('/integrations/youtube/history', { params: { user_id: userId }, suppressToast: true }),
+    getLiked: (userId?: number) => client.get('/integrations/youtube/liked', { params: { user_id: userId }, suppressToast: true }),
     disconnect: () => client.delete('/integrations/youtube/disconnect'),
 };
 

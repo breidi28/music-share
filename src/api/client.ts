@@ -56,7 +56,8 @@ client.interceptors.response.use(
         // Suppress toasts for the initial auth/me check when simply not logged in
         const isAuthMe = error.config?.url?.includes('/auth/me');
         const isSpotifyLivePoll = error.config?.url?.includes('/integrations/spotify/live');
-        if (!isAuthMe && !isSpotifyLivePoll) {
+        const suppressToast = error.config?.suppressToast || error.config?.headers?.['x-suppress-toast'];
+        if (!isAuthMe && !isSpotifyLivePoll && !suppressToast) {
             Toast.show({
                 type: 'error',
                 text1: 'Oops!',
