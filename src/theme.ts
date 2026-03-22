@@ -70,3 +70,14 @@ export const Radii = {
     xl: 20,
     full: 9999,
 };
+
+// Helper: choosing black or white text based on background brightness
+export const getContrastColor = (hex: string): string => {
+    if (!hex || hex.length < 6) return '#FFFFFF';
+    const c = hex.startsWith('#') ? hex.substring(1) : hex;
+    const r = parseInt(c.substring(0, 2), 16);
+    const g = parseInt(c.substring(2, 4), 16);
+    const b = parseInt(c.substring(4, 6), 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 150 ? '#000000' : '#FFFFFF'; // threshold bumped to 150 for better legibility on medium/light colors
+};

@@ -14,7 +14,7 @@ import { User, Post, PostType, ReactionType } from '../types';
 import { usersApi, postsApi, spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, listenLaterApi, collectionApi } from '../api/endpoints';
 import { API_BASE_URL } from '../api/client';
 import { useAuthStore } from '../store/authStore';
-import { Colors } from '../theme';
+import { Colors, getContrastColor } from '../theme';
 import PostCard from '../components/PostCard';
 import CommentsModal from '../components/CommentsModal';
 
@@ -774,7 +774,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                                     borderColor: 'rgba(255,255,255,0.2)'
                                 }}
                             >
-                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>{profile?.is_following ? 'Following' : 'Follow'}</Text>
+                                <Text style={{ color: profile?.is_following ? 'white' : getContrastColor(accentColor), fontWeight: '700', fontSize: 15 }}>{profile?.is_following ? 'Following' : 'Follow'}</Text>
                             </TouchableOpacity>
                             {tasteMatch !== null && (
                                 <View style={{ 
@@ -887,7 +887,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                                     }}
                                 >
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                        <Text style={{ fontSize: 13, fontWeight: '700', color: active ? 'white' : 'rgba(255,255,255,0.7)' }}>{s.label}</Text>
+                                        <Text style={{ fontSize: 13, fontWeight: '700', color: active ? getContrastColor(s.color) : 'rgba(255,255,255,0.7)' }}>{s.label}</Text>
                                     </View>
                                 </TouchableOpacity>
                             );
@@ -1134,8 +1134,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                                     borderColor: active ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)'
                                 }}
                             >
-                                <Ionicons name={tab.icon} size={15} color={active ? 'white' : '#8E8E93'} />
-                                <Text style={{ fontSize: 15, fontWeight: '700', color: active ? 'white' : '#8E8E93' }}>{tab.label}</Text>
+                                <Ionicons name={tab.icon} size={15} color={active ? getContrastColor(accentColor) : '#8E8E93'} />
+                                <Text style={{ fontSize: 15, fontWeight: '700', color: active ? getContrastColor(accentColor) : '#8E8E93' }}>{tab.label}</Text>
                             </TouchableOpacity>
                         );
                     })}
