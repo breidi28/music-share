@@ -35,25 +35,7 @@ const FILTER_TABS: { key: PostType | 'all'; label: string; icon: keyof typeof Io
 
 const PROFILE_ACCENTS = ['#FA243C', '#10B981', '#3B82F6', '#F59E0B', '#A855F7', '#14B8A6'];
 
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
-
-const KawarpBackground: React.FC<{ accent?: string }> = ({ accent = '#3B82F6' }) => {
-    const anim = useRef(new Animated.Value(0)).current;
-    useEffect(() => {
-        Animated.loop(Animated.timing(anim, { toValue: 1, duration: 9000, useNativeDriver: true })).start();
-    }, []);
-    const tx1 = anim.interpolate({ inputRange: [0, 1], outputRange: [-60, 60] });
-    const ty1 = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -40] });
-    const tx2 = anim.interpolate({ inputRange: [0, 1], outputRange: [60, -60] });
-    return (
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-            <AnimatedLinearGradient colors={[accent + '33', accent + '00']} start={[0, 0]} end={[1, 1]}
-                style={{ width: 520, height: 520, borderRadius: 260, position: 'absolute', left: -120, top: -140, transform: [{ translateX: tx1 }, { translateY: ty1 }] }} />
-            <AnimatedLinearGradient colors={["#A855F7AA", "#3B82F6AA"]} start={[0, 0]} end={[1, 1]}
-                style={{ width: 420, height: 420, borderRadius: 210, position: 'absolute', right: -100, top: -80, transform: [{ translateX: tx2 }] }} />
-        </View>
-    );
-};
+import KawarpBackground from '../components/KawarpBackground';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -1123,7 +1105,7 @@ export default function ProfileScreen({ navigation, route }: any) {
 
     return (
         <View className="flex-1 bg-black">
-            <KawarpBackground accent={accentColor} />
+            <KawarpBackground accent={accentColor} avatarUrl={profile?.avatar_url} />
             {renderTopNav()}
             <FlatList
                 data={posts}
