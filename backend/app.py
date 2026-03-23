@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
@@ -1076,7 +1076,8 @@ def spotify_callback():
             if not state:
                 return "Missing state parameter (user_id required)", 400
             user_id = int(state)
-            redirect_uri = f"{request.host_url.rstrip('/')}/api/integrations/spotify/callback"
+            # Use exact env var to prevent OAuth mismatches
+            redirect_uri = SPOTIFY_REDIRECT_URI
         else:
             # For POST requests, jwt_required() is expected to be applied,
             # but since it's a shared endpoint, we'll handle it manually.
@@ -1141,7 +1142,7 @@ def spotify_callback():
 
         if request.method == 'GET':
             # Redirect back to the mobile app
-            return "<script>window.location.href='musicshare://auth-success?service=spotify';</script>Please return to the app."
+            return redirect("musicshare://auth-success?service=spotify")
         
         return jsonify({'message': 'Spotify linked successfully', 'user': user.to_dict(user_id)})
         
@@ -1406,7 +1407,8 @@ def youtube_callback():
             if not state:
                 return "Missing state parameter (user_id required)", 400
             user_id = int(state)
-            redirect_uri = f"{request.host_url.rstrip('/')}/api/integrations/youtube/callback"
+            # Use exact env var to prevent OAuth 'invalid_grant' mismatches
+            redirect_uri = YOUTUBE_REDIRECT_URI
         else:
             try:
                 verify_jwt_in_request()
@@ -1463,7 +1465,7 @@ def youtube_callback():
         db.session.commit()
 
         if request.method == 'GET':
-            return "<script>window.location.href='musicshare://auth-success?service=youtube';</script>Please return to the app."
+            return redirect("musicshare://auth-success?service=youtube")
 
         return jsonify({'message': 'YouTube Music linked successfully', 'user': user.to_dict(user_id)})
         
@@ -2099,7 +2101,7 @@ def deezer_callback():
         db.session.commit()
 
         if request.method == 'GET':
-            return "<script>window.location.href='musicshare://auth-success?service=deezer';</script>Please return to the app."
+            return redirect("musicshare://auth-success?service=deezer")
 
         return jsonify({'message': 'Deezer linked successfully', 'user': user.to_dict(user_id)})
         
