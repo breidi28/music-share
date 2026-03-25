@@ -14,8 +14,10 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "We need access to your camera to scan barcodes of your physical media collection."
-      }
+        "NSCameraUsageDescription": "We need access to your camera to scan barcodes of your physical media collection.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.breidi282.musicshare"
     },
     "scheme": "musicshare",
     "android": {
@@ -27,7 +29,6 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.CAMERA",
         "android.permission.CAMERA"
       ],
       "package": "com.breidi282.musicshare"

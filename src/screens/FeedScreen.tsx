@@ -11,6 +11,7 @@ import { Colors } from '../theme';
 import { HIG } from '../theme/hig';
 import PostCard from '../components/PostCard';
 import CommentsModal from '../components/CommentsModal';
+import { MenuModal } from '../components/ui/MenuModal';
 
 export default function FeedScreen({ navigation }: any) {
     const [posts, setPosts] = useState<Post[]>([]);
@@ -19,6 +20,7 @@ export default function FeedScreen({ navigation }: any) {
     const [unreadCount, setUnreadCount] = useState(0);
     const [selectedPost, setSelectedPost] = useState<Post | null>(null);
     const [commentsVisible, setCommentsVisible] = useState(false);
+    const [menuVisible, setMenuVisible] = useState(false);
     const [friendActivityExpanded, setFriendActivityExpanded] = useState(false);
     const { user } = useAuthStore();
     const insets = useSafeAreaInsets();
@@ -150,12 +152,7 @@ export default function FeedScreen({ navigation }: any) {
     };
 
     const openHeaderMenu = () => {
-        Alert.alert('Menu', 'Choose an action', [
-            { text: 'Search', onPress: () => navigation.navigate('Search') },
-            { text: 'Collaborative Lists', onPress: () => navigation.navigate('CollaborativeLists') },
-            { text: 'Listen Later', onPress: () => navigation.navigate('ListenLater') },
-            { text: 'Cancel', style: 'cancel' },
-        ]);
+        setMenuVisible(true);
     };
 
     const renderHeader = () => (
@@ -311,6 +308,18 @@ export default function FeedScreen({ navigation }: any) {
                 post={selectedPost}
                 visible={commentsVisible}
                 onClose={() => setCommentsVisible(false)}
+            />
+            
+            <MenuModal
+                visible={menuVisible}
+                title="Feed Menu"
+                onClose={() => setMenuVisible(false)}
+                options={[
+                    { text: 'Search', icon: 'search-outline', onPress: () => navigation.navigate('Search') },
+                    { text: 'Collaborative Lists', icon: 'list-outline', onPress: () => navigation.navigate('CollaborativeLists') },
+                    { text: 'Listen Later', icon: 'bookmark-outline', onPress: () => navigation.navigate('ListenLater') },
+                    { text: 'Cancel', style: 'cancel' },
+                ]}
             />
         </View>
     );

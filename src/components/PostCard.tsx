@@ -8,6 +8,7 @@ import { Colors } from '../theme';
 import { API_BASE_URL } from '../api/client';
 import { Layout, Surface } from '../theme/layout';
 import { AppChip, AppIconButton } from './ui/Primitives';
+import { MenuModal, MenuOption } from './ui/MenuModal';
 
 // Helper to get full avatar URL
 const getAvatarUrl = (url: string | null | undefined): string => {
@@ -84,6 +85,7 @@ export default function PostCard({
 }: Props) {
     const [sound,     setSound]     = React.useState<Audio.Sound | null>(null);
     const [isPlaying, setIsPlaying] = React.useState(false);
+    const [menuVisible, setMenuVisible] = React.useState(false);
 
     useEffect(() => {
         return sound ? () => { sound.unloadAsync(); } : undefined;
@@ -123,32 +125,35 @@ export default function PostCard({
         } catch {}
     };
 
-    const openMoreActions = () => {
-        const actions: Array<{ text: string; onPress?: () => void; style?: 'default' | 'cancel' | 'destructive' }> = [];
+    const postActions = React.useMemo(() => {
+        const actions: MenuOption[] = [];
 
         if (post.spotify_url || post.preview_url) {
             const service = detectSourceService(post);
-            actions.push({ text: service ? `Open in ${SOURCE_CFG[service].label}` : 'Open in Service', onPress: handleOpenSource });
+            actions.push({ text: service ? `Open in ${SOURCE_CFG[service].label}` : 'Open in Service', icon: 'open-outline', onPress: handleOpenSource });
         }
 
         if (onListenLater) {
-            actions.push({ text: 'Add to Listen Later', onPress: () => onListenLater(post) });
+            actions.push({ text: 'Add to Listen Later', icon: 'bookmark-outline', onPress: () => onListenLater(post) });
         }
 
         if (onQuickReact) {
-            actions.push({ text: 'React: On Repeat', onPress: () => onQuickReact(post.id, 'on_repeat') });
-            actions.push({ text: 'React: Saved', onPress: () => onQuickReact(post.id, 'saved') });
-            actions.push({ text: 'React: Crate Worthy', onPress: () => onQuickReact(post.id, 'crate_worthy') });
-            actions.push({ text: 'React: Skip', onPress: () => onQuickReact(post.id, 'skip') });
+            actions.push({ text: 'React: On Repeat', icon: 'repeat', onPress: () => onQuickReact(post.id, 'on_repeat') });
+            actions.push({ text: 'React: Saved', icon: 'heart-outline', onPress: () => onQuickReact(post.id, 'saved') });
+            actions.push({ text: 'React: Crate Worthy', icon: 'cube-outline', onPress: () => onQuickReact(post.id, 'crate_worthy') });
+            actions.push({ text: 'React: Skip', icon: 'play-skip-forward-outline', onPress: () => onQuickReact(post.id, 'skip') });
         }
 
         if (isOwn && onDelete) {
-            actions.push({ text: 'Delete Post', style: 'destructive', onPress: () => onDelete(post.id) });
+            actions.push({ text: 'Delete Post', icon: 'trash-outline', style: 'destructive', onPress: () => onDelete(post.id) });
         }
 
         actions.push({ text: 'Cancel', style: 'cancel' });
+        return actions;
+    }, [post, isOwn, onListenLater, onQuickReact, onDelete]);
 
-        Alert.alert('Post Actions', 'Choose an action', actions);
+    const openMoreActions = () => {
+        setMenuVisible(true);
     };
 
     const cfg       = TYPE_CFG[post.post_type] ?? TYPE_CFG.loved;
@@ -296,6 +301,12 @@ export default function PostCard({
                 <Text style={[s.actionCount, { marginLeft: 'auto' }]}>{timeAgo}</Text>
             </View>
 
+            <MenuModal 
+                visible={menuVisible}
+                title="Post Actions"
+                options={postActions}
+                onClose={() => setMenuVisible(false)}
+            />
         </View>
     );
 }

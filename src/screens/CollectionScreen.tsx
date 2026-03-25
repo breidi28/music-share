@@ -227,7 +227,6 @@ const CollectionItemRow = React.memo(({
     return (
         <TouchableOpacity
             onPress={isMyCollection ? () => onEdit(item) : undefined}
-            onLongPress={isMyCollection ? () => onRemove(item) : undefined}
             activeOpacity={isMyCollection ? 0.2 : 1}
             style={{
                 flex: isGrid || isShelf ? 1 : undefined,
@@ -1345,6 +1344,31 @@ export default function CollectionScreen({ navigation, route }: any) {
                                         {notes.length}/500
                                     </Text>
                                 </View>
+
+                                {/* Delete Button */}
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        setEditModalVisible(false);
+                                        handleRemove(editingItem);
+                                    }}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        paddingVertical: 14,
+                                        marginTop: 8,
+                                        marginBottom: 32,
+                                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                        borderWidth: 1,
+                                        borderColor: 'rgba(239, 68, 68, 0.2)',
+                                        borderRadius: 12,
+                                    }}
+                                >
+                                    <Ionicons name="trash-outline" size={20} color="#ef4444" style={{ marginRight: 8 }} />
+                                    <Text style={{ color: '#ef4444', fontWeight: '600', fontSize: 16 }}>
+                                        Remove from Collection
+                                    </Text>
+                                </TouchableOpacity>
                             </>
                         )}
                     </ScrollView>
