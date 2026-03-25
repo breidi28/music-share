@@ -44,7 +44,7 @@
     },
     "plugins": [
       "expo-web-browser",
-      "expo-barcode-scanner"
+      "expo-camera"
     ],
     "extra": {
       "eas": {
