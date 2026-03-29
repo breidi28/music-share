@@ -131,7 +131,7 @@ export default function ListenLaterScreen({ navigation }: any) {
                                     {item.artist}{item.album ? ` • ${item.album}` : ''}
                                 </Text>
                                 <Text style={{ color: '#6b7280', marginTop: 4, fontSize: 12 }}>
-                                    Saved {formatDistanceToNow(new Date(item.added_at), { addSuffix: true })}
+                                    Saved {(() => { try { return formatDistanceToNow(new Date(item.added_at), { addSuffix: true }); } catch { return ''; } })()}
                                 </Text>
                             </View>
 

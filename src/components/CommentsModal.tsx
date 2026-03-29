@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { FlatList, Platform, KeyboardAvoidingView, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import Modal from 'react-native-modal';
 import { Ionicons } from '@expo/vector-icons';
-import { Post, Comment } from '../types';
+import { Post, Comment, User } from '../types';
 import { API_BASE_URL } from '../api/client';
 import { postsApi, usersApi } from '../api/endpoints';
 import { useAuthStore } from '../store/authStore';
@@ -22,7 +22,7 @@ export default function CommentsModal({ post, visible, onClose }: Props) {
     const [sending, setSending] = useState(false);
     const [replyTo, setReplyTo] = useState<Comment | null>(null);
     const [mentionQuery, setMentionQuery] = useState('');
-    const [mentionResults, setMentionResults] = useState<Array<{ id: number; username: string; display_name: string; avatar_url: string }>>([]);
+    const [mentionResults, setMentionResults] = useState<Pick<User, 'id' | 'username' | 'display_name' | 'avatar_url'>[]>([]);
     const [mentionLoading, setMentionLoading] = useState(false);
     const { user } = useAuthStore();
 
@@ -173,7 +173,7 @@ export default function CommentsModal({ post, visible, onClose }: Props) {
                         </View>
                     )}
                     <Text className="text-gray-500 text-xs">
-                        {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                        {(() => { try { return formatDistanceToNow(new Date(item.created_at), { addSuffix: true }); } catch { return ''; } })()}
                     </Text>
                     {!isReply && (
                         <TouchableOpacity onPress={() => setReplyTo(item)}>

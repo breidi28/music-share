@@ -68,6 +68,7 @@ const EqBar = ({ delay, peak }: { delay: number; peak: number }) => {
         );
         const t = setTimeout(() => loop.start(), delay);
         return () => { clearTimeout(t); loop.stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     return <Animated.View style={{ width: 3, height: h, backgroundColor: 'white', borderRadius: 2, opacity: 0.85 }} />;
 };

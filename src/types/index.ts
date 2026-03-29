@@ -78,8 +78,8 @@ export interface ListenLaterItem {
   artist: string;
   album: string;
   album_art_url: string;
-  source_service: string;
-  source_url: string;
+  source_service?: string;
+  source_url?: string;
   added_at: string;
 }
 
