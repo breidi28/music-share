@@ -78,6 +78,25 @@ const HTML_CONTENT = `
         setTimeout(() => {
             window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ready' }));
         }, 100);
+
+        // Global functions for React Native injection
+        window.updateKawarp = (optsStr) => {
+            if(kawarp) {
+                try {
+                    const opts = JSON.parse(optsStr);
+                    kawarp.setOptions(opts);
+                } catch(e) {}
+            }
+        };
+        window.loadImage = (url) => {
+            if(kawarp) kawarp.loadImage(url).then(() => kawarp.start());
+        };
+        window.loadGradient = (colors) => {
+            if(kawarp) {
+                kawarp.loadGradient(colors, 135);
+                kawarp.start();
+            }
+        };
     </script>
 </body>
 </html>
@@ -103,26 +122,24 @@ export default function KawarpBackground({ accent = '#3B82F6', avatarUrl, option
         if (!readyRef.current || !options) return;
         if (!webviewRef.current) return;
         
-        const script = `window.postMessage('${JSON.stringify({ type: 'setOptions', options })}', '*'); true;`;
+        const script = `if (window.updateKawarp) { window.updateKawarp('${JSON.stringify(options)}'); } true;`;
         webviewRef.current.injectJavaScript(script);
     }, [options]);
 
     const sendUpdate = () => {
         if (!webviewRef.current) return;
         
-        let msg;
+        let script;
         if (avatarUrl) {
             // Make relative urls absolute natively
             const url = avatarUrl.startsWith('http') || avatarUrl.startsWith('data:') 
                             ? avatarUrl 
                             : `https://music-share-b4r8.onrender.com${avatarUrl}`;
-            msg = { type: 'loadImage', url };
+            script = `if(window.loadImage) window.loadImage('${url}'); true;`;
         } else {
-            msg = { type: 'loadGradient', colors: ['#111111', accent, '#000000'] };
+            script = `if(window.loadGradient) window.loadGradient(['#111111', '${accent}', '#000000']); true;`;
         }
         
-        // Passing data to WebView
-        const script = `window.postMessage('${JSON.stringify(msg)}', '*'); true;`;
         webviewRef.current.injectJavaScript(script);
     };
 
@@ -144,7 +161,7 @@ export default function KawarpBackground({ accent = '#3B82F6', avatarUrl, option
                             readyRef.current = true;
                             sendUpdate();
                             if (options) {
-                                webviewRef.current?.injectJavaScript(`window.postMessage('${JSON.stringify({ type: 'setOptions', options })}', '*'); true;`);
+                                webviewRef.current?.injectJavaScript(`if (window.updateKawarp) { window.updateKawarp('${JSON.stringify(options)}'); } true;`);
                             }
                         }
                     } catch {}

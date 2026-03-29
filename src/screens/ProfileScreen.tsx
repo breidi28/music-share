@@ -64,6 +64,12 @@ export default function ProfileScreen({ navigation, route }: any) {
     const isMe = targetId === me?.id;
 
     const [profile, setProfile] = useState<User | null>(null);
+
+    // Sync auth store updates to local profile when editing own profile
+    useEffect(() => {
+        if (isMe && me) setProfile(me);
+    }, [me, isMe]);
+
     const [posts, setPosts] = useState<Post[]>([]);
     const [filter, setFilter] = useState<PostType | 'all'>('all');
     const [loading, setLoading] = useState(true);
