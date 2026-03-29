@@ -1143,10 +1143,11 @@ export default function ProfileScreen({ navigation, route }: any) {
             </View>
         </View>
     );
+    const kawarpImage = liveTrack?.album_art_url || posts.find(p => p.album_art_url)?.album_art_url || profile?.avatar_url;
 
     return (
         <View className="flex-1 bg-black">
-            <KawarpBackground accent={accentColor} avatarUrl={profile?.avatar_url} />
+            <KawarpBackground accent={accentColor} avatarUrl={kawarpImage} />
             {renderTopNav()}
             <FlatList
                 data={posts}
