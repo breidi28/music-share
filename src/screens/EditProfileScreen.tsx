@@ -14,7 +14,9 @@ import KawarpBackground from '../components/KawarpBackground';
 const PROFILE_ACCENTS = ['#FA243C', '#10B981', '#3B82F6', '#F59E0B', '#A855F7', '#14B8A6'];
 
 const BACKGROUND_PRESETS = [
-    { id: 'auto', label: 'Avatar/Track', url: 'auto' },
+    { id: 'track', label: 'Recent Track', url: 'track' },
+    { id: 'avatar', label: 'Avatar', url: 'avatar' },
+    { id: 'accent', label: 'Accent Color', url: 'accent' },
     { id: 'fluid', label: 'Fluid Dream', url: 'https://images.unsplash.com/photo-1558470598-a5dda9640f68?w=400&q=80' },
     { id: 'aurora', label: 'Aurora', url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=400&q=80' },
     { id: 'neon', label: 'Neon Lines', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=400&q=80' },
@@ -105,7 +107,7 @@ export default function EditProfileScreen({ navigation }: any) {
     };
 
     const editOptions = React.useMemo(() => {
-        const defaults = { warpIntensity: 1.0, blurPasses: 8, animationSpeed: 1.0, transitionDuration: 1000, saturation: 1.5, tintIntensity: 0.15, dithering: 0.008, scale: 1.0, backgroundImage: 'auto' };
+        const defaults = { warpIntensity: 1.0, blurPasses: 8, animationSpeed: 1.0, transitionDuration: 1000, saturation: 1.5, tintIntensity: 0.15, dithering: 0.008, scale: 1.0, backgroundImage: 'track' };
         try { return form.kawarp_config ? { ...defaults, ...JSON.parse(form.kawarp_config) } : defaults; } catch { return defaults; }
     }, [form.kawarp_config]);
 
@@ -130,6 +132,13 @@ export default function EditProfileScreen({ navigation }: any) {
     );
 
     const SimpleSliderLabelOnly = ({ label }: any) => <Text style={{ color: '#6b7280', fontSize: 11, textAlign: 'center', marginTop: -4, marginBottom: 16 }}>{label}</Text>;
+
+    const getPreviewImage = (bgUrl: string) => {
+        if (bgUrl === 'track' || bgUrl === 'auto') return form.avatar_url; // Settings preview defaults track to avatar
+        if (bgUrl === 'avatar') return form.avatar_url;
+        if (bgUrl === 'accent') return undefined;
+        return bgUrl;
+    };
 
     return (
         <View style={{ flex: 1, backgroundColor: '#0A0A0F', paddingTop: Platform.OS === 'ios' ? insets.top + 6 : insets.top + 12, paddingHorizontal: 20 }}>
@@ -220,7 +229,7 @@ export default function EditProfileScreen({ navigation }: any) {
                     
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20, marginBottom: 16 }}>
                         {BACKGROUND_PRESETS.map(preset => {
-                            const isSelected = editOptions.backgroundImage === preset.url || (editOptions.backgroundImage === 'auto' && preset.url === 'auto');
+                            const isSelected = editOptions.backgroundImage === preset.url || (editOptions.backgroundImage === 'auto' && preset.url === 'track');
                             return (
                                 <TouchableOpacity 
                                     key={preset.id} 
@@ -241,7 +250,7 @@ export default function EditProfileScreen({ navigation }: any) {
                     </ScrollView>
 
                     <View style={{ width: '100%', height: 160, borderRadius: 16, overflow: 'hidden', marginBottom: 20 }}>
-                        <KawarpBackground accent={accentColor} avatarUrl={editOptions.backgroundImage && editOptions.backgroundImage !== 'auto' ? editOptions.backgroundImage : form.avatar_url} options={editOptions} />
+                        <KawarpBackground accent={accentColor} avatarUrl={getPreviewImage(editOptions.backgroundImage)} options={editOptions} />
                     </View>
 
                     <SimpleSlider label="Warp Intensity" value={editOptions.warpIntensity} min={0} max={1} step={0.1} onChange={(v: number) => handleOptionChange('warpIntensity', v)} />
