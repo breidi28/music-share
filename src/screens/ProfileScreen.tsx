@@ -1145,12 +1145,14 @@ export default function ProfileScreen({ navigation, route }: any) {
             </View>
         </View>
     );
-    const kawarpImage = liveTrack?.album_art_url || posts.find(p => p.album_art_url)?.album_art_url || profile?.avatar_url;
     const parsedOptions = React.useMemo(() => {
         try {
             return profile?.kawarp_config ? JSON.parse(profile.kawarp_config) : undefined;
         } catch { return undefined; }
     }, [profile?.kawarp_config]);
+
+    const defaultKawarpImage = liveTrack?.album_art_url || posts.find(p => p.album_art_url)?.album_art_url || profile?.avatar_url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80';
+    const kawarpImage = parsedOptions?.backgroundImage && parsedOptions.backgroundImage !== 'auto' ? parsedOptions.backgroundImage : defaultKawarpImage;
 
     const editOptions = React.useMemo(() => {
         const defaults = { warpIntensity: 1.0, blurPasses: 8, animationSpeed: 1.0, transitionDuration: 1000, saturation: 1.5, tintIntensity: 0.15, dithering: 0.008, scale: 1.0 };

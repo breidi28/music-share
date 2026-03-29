@@ -13,6 +13,13 @@ import KawarpBackground from '../components/KawarpBackground';
 
 const PROFILE_ACCENTS = ['#FA243C', '#10B981', '#3B82F6', '#F59E0B', '#A855F7', '#14B8A6'];
 
+const BACKGROUND_PRESETS = [
+    { id: 'auto', label: 'Avatar/Track', url: 'auto' },
+    { id: 'fluid', label: 'Fluid Dream', url: 'https://images.unsplash.com/photo-1558470598-a5dda9640f68?w=400&q=80' },
+    { id: 'aurora', label: 'Aurora', url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=400&q=80' },
+    { id: 'neon', label: 'Neon Lines', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=400&q=80' },
+];
+
 const getAvatarUrl = (url: string | null | undefined): string => {
     if (!url) return '';
     if (url.startsWith('http') || url.startsWith('data:')) return url;
@@ -98,7 +105,7 @@ export default function EditProfileScreen({ navigation }: any) {
     };
 
     const editOptions = React.useMemo(() => {
-        const defaults = { warpIntensity: 1.0, blurPasses: 8, animationSpeed: 1.0, transitionDuration: 1000, saturation: 1.5, tintIntensity: 0.15, dithering: 0.008, scale: 1.0 };
+        const defaults = { warpIntensity: 1.0, blurPasses: 8, animationSpeed: 1.0, transitionDuration: 1000, saturation: 1.5, tintIntensity: 0.15, dithering: 0.008, scale: 1.0, backgroundImage: 'auto' };
         try { return form.kawarp_config ? { ...defaults, ...JSON.parse(form.kawarp_config) } : defaults; } catch { return defaults; }
     }, [form.kawarp_config]);
 
@@ -210,8 +217,31 @@ export default function EditProfileScreen({ navigation }: any) {
                     </View>
 
                     <Text style={{ color: 'white', fontSize: 15, fontWeight: '700', marginBottom: 12, marginTop: 8 }}>Dynamic Background</Text>
+                    
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20, marginBottom: 16 }}>
+                        {BACKGROUND_PRESETS.map(preset => {
+                            const isSelected = editOptions.backgroundImage === preset.url || (editOptions.backgroundImage === 'auto' && preset.url === 'auto');
+                            return (
+                                <TouchableOpacity 
+                                    key={preset.id} 
+                                    onPress={() => handleOptionChange('backgroundImage', preset.url as any)}
+                                    style={{ 
+                                        marginRight: 10, 
+                                        paddingHorizontal: 14, 
+                                        paddingVertical: 8, 
+                                        borderRadius: 20, 
+                                        backgroundColor: isSelected ? Colors.primary : 'rgba(255,255,255,0.08)',
+                                        borderWidth: 1,
+                                        borderColor: isSelected ? Colors.primary : 'rgba(255,255,255,0.1)'
+                                    }}>
+                                    <Text style={{ color: isSelected ? 'white' : '#9ca3af', fontSize: 13, fontWeight: '600' }}>{preset.label}</Text>
+                                </TouchableOpacity>
+                            )
+                        })}
+                    </ScrollView>
+
                     <View style={{ width: '100%', height: 160, borderRadius: 16, overflow: 'hidden', marginBottom: 20 }}>
-                        <KawarpBackground accent={accentColor} avatarUrl={form.avatar_url} options={editOptions} />
+                        <KawarpBackground accent={accentColor} avatarUrl={editOptions.backgroundImage && editOptions.backgroundImage !== 'auto' ? editOptions.backgroundImage : form.avatar_url} options={editOptions} />
                     </View>
 
                     <SimpleSlider label="Warp Intensity" value={editOptions.warpIntensity} min={0} max={1} step={0.1} onChange={(v: number) => handleOptionChange('warpIntensity', v)} />
