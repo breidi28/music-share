@@ -248,6 +248,9 @@ class User(db.Model):
     deezer_user_id = db.Column(db.String(100), default='')
     deezer_token_expires_at = db.Column(db.DateTime, nullable=True)
 
+    # Tracks when background Spotify sync last ran for this user
+    last_synced_at = db.Column(db.DateTime, nullable=True)
+
     posts = db.relationship('Post', backref='author', lazy=True, cascade='all, delete-orphan')
     followed = db.relationship('User', secondary=followers,
         primaryjoin=(followers.c.follower_id == id),
@@ -308,8 +311,6 @@ class Post(db.Model):
     listened_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     pinned_comment_id = db.Column(db.Integer, db.ForeignKey('comment.id'), nullable=True)
-    # Tracks when background Spotify sync last ran for this user
-    last_synced_at = db.Column(db.DateTime, nullable=True)
 
     liked_by = db.relationship('User', secondary=track_likes, backref='liked_posts', lazy='dynamic')
 
