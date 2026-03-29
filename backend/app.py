@@ -2541,21 +2541,47 @@ def get_feed():
     followed_ids = [u.id for u in current_user.followed]
     followed_ids.append(current_user_id)  # include own posts
 
-    # Use selectinload to batch-fetch authors and likes in 2 extra queries
-    # instead of 2×N queries (N+1 problem).
-    posts = Post.query \
+    # selectinload(Post.author) batches author fetches into 1 extra query.
+    # NOTE: liked_by is lazy='dynamic' and cannot use selectinload.
+    # Instead we fetch like counts and is_liked in two bulk queries below.
+    posts_page = Post.query \
         .filter(Post.user_id.in_(followed_ids)) \
-        .options(
-            selectinload(Post.author),
-            selectinload(Post.liked_by),
-        ) \
+        .options(selectinload(Post.author)) \
         .order_by(Post.created_at.desc()) \
         .paginate(page=page, per_page=20, error_out=False)
 
+    post_ids = [p.id for p in posts_page.items]
+
+    # Batch like counts — one query for all posts on this page
+    like_counts = dict(
+        db.session.query(track_likes.c.post_id, db.func.count(track_likes.c.user_id))
+        .filter(track_likes.c.post_id.in_(post_ids))
+        .group_by(track_likes.c.post_id)
+        .all()
+    ) if post_ids else {}
+
+    # Batch is_liked — one query for all posts on this page
+    liked_set = set(
+        row[0] for row in
+        db.session.query(track_likes.c.post_id)
+        .filter(
+            track_likes.c.post_id.in_(post_ids),
+            track_likes.c.user_id == current_user_id
+        )
+        .all()
+    ) if post_ids else set()
+
+    result = []
+    for p in posts_page.items:
+        d = p.to_dict(current_user_id=None)   # skip liked_by inside to_dict
+        d['likes_count'] = like_counts.get(p.id, 0)
+        d['is_liked']    = p.id in liked_set
+        result.append(d)
+
     return jsonify({
-        'posts': [p.to_dict(current_user_id=current_user_id) for p in posts.items],
-        'total': posts.total,
-        'pages': posts.pages,
+        'posts': result,
+        'total': posts_page.total,
+        'pages': posts_page.pages,
         'current_page': page
     })
 
