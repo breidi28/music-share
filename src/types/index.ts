@@ -17,6 +17,7 @@ export interface User {
   has_qobuz_linked?: boolean;
   has_deezer_linked?: boolean;
   collection_count: number;
+  kawarp_config?: string;
 }
 
 export type PostType = 'now_playing' | 'loved' | 'history' | 'spin';

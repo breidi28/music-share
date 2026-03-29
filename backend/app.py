@@ -251,6 +251,9 @@ class User(db.Model):
     # Tracks when background Spotify sync last ran for this user
     last_synced_at = db.Column(db.DateTime, nullable=True)
 
+    # Stores Kawarp background customization as JSON string
+    kawarp_config = db.Column(db.String(1000), nullable=True)
+
     posts = db.relationship('Post', backref='author', lazy=True, cascade='all, delete-orphan')
     followed = db.relationship('User', secondary=followers,
         primaryjoin=(followers.c.follower_id == id),
@@ -282,6 +285,7 @@ class User(db.Model):
             'has_qobuz_linked': bool(self.qobuz_user_auth_token),
             'has_deezer_linked': bool(self.deezer_access_token),
             'collection_count': len(self.collection_items) if hasattr(self, 'collection_items') else 0,
+            'kawarp_config': self.kawarp_config,
         }
         if current_user_id:
             try:
@@ -2470,6 +2474,9 @@ def update_profile():
                 user.avatar_url = None
         if 'favorite_genres' in data:
             user.favorite_genres = sanitize_string(data['favorite_genres'], MAX_GENRES_LEN)
+        if 'kawarp_config' in data:
+            # save the json string directly
+            user.kawarp_config = str(data['kawarp_config'])[:1000] if data['kawarp_config'] else None
 
         db.session.commit()
         return jsonify(user.to_dict(current_user_id=current_user_id))
@@ -4130,6 +4137,7 @@ def _ensure_phase0_schema():
     statements = [
         # Added: per-user throttle for Spotify background sync
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP',
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS kawarp_config VARCHAR(1000)',
     ]
     with db.engine.connect() as conn:
         for stmt in statements:

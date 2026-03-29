@@ -86,10 +86,11 @@ const HTML_CONTENT = `
 type Props = {
     accent?: string;
     avatarUrl?: string | null;
+    options?: any;
     style?: any;
 };
 
-export default function KawarpBackground({ accent = '#3B82F6', avatarUrl, style }: Props) {
+export default function KawarpBackground({ accent = '#3B82F6', avatarUrl, options, style }: Props) {
     const webviewRef = useRef<WebView>(null);
     const readyRef = useRef(false);
 
@@ -97,6 +98,14 @@ export default function KawarpBackground({ accent = '#3B82F6', avatarUrl, style 
         if (!readyRef.current) return;
         sendUpdate();
     }, [accent, avatarUrl]);
+
+    useEffect(() => {
+        if (!readyRef.current || !options) return;
+        if (!webviewRef.current) return;
+        
+        const script = `window.postMessage('${JSON.stringify({ type: 'setOptions', options })}', '*'); true;`;
+        webviewRef.current.injectJavaScript(script);
+    }, [options]);
 
     const sendUpdate = () => {
         if (!webviewRef.current) return;
@@ -134,6 +143,9 @@ export default function KawarpBackground({ accent = '#3B82F6', avatarUrl, style 
                         if (data.type === 'ready') {
                             readyRef.current = true;
                             sendUpdate();
+                            if (options) {
+                                webviewRef.current?.injectJavaScript(`window.postMessage('${JSON.stringify({ type: 'setOptions', options })}', '*'); true;`);
+                            }
                         }
                     } catch {}
                 }}

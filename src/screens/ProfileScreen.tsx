@@ -117,7 +117,7 @@ export default function ProfileScreen({ navigation, route }: any) {
     
     const [tasteMatch, setTasteMatch] = useState<number | null>(null);
     const [editMode, setEditMode] = useState(false);
-    const [editData, setEditData] = useState({ display_name: '', bio: '', favorite_genres: '', avatar_url: '' });
+    const [editData, setEditData] = useState({ display_name: '', bio: '', favorite_genres: '', avatar_url: '', kawarp_config: '' });
     const insets = useSafeAreaInsets();
 
     // Google OAuth discovery for YouTube
@@ -508,7 +508,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                     display_name: profileRes.data.display_name || '',
                     bio: profileRes.data.bio || '',
                     favorite_genres: profileRes.data.favorite_genres || '',
-                    avatar_url: profileRes.data.avatar_url || ''
+                    avatar_url: profileRes.data.avatar_url || '',
+                    kawarp_config: profileRes.data.kawarp_config || ''
                 });
             }
         } catch { }
@@ -525,6 +526,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                 bio: profile.bio || '',
                 favorite_genres: profile.favorite_genres || '',
                 avatar_url: profile.avatar_url || '',
+                kawarp_config: profile.kawarp_config || '',
             });
             setEditMode(true);
             navigation.setParams({ openEdit: false });
@@ -1144,10 +1146,40 @@ export default function ProfileScreen({ navigation, route }: any) {
         </View>
     );
     const kawarpImage = liveTrack?.album_art_url || posts.find(p => p.album_art_url)?.album_art_url || profile?.avatar_url;
+    const parsedOptions = React.useMemo(() => {
+        try {
+            return profile?.kawarp_config ? JSON.parse(profile.kawarp_config) : undefined;
+        } catch { return undefined; }
+    }, [profile?.kawarp_config]);
+
+    const editOptions = React.useMemo(() => {
+        const defaults = { warpIntensity: 1.0, blurPasses: 8, animationSpeed: 1.0, transitionDuration: 1000, saturation: 1.5, tintIntensity: 0.15, dithering: 0.008, scale: 1.0 };
+        try { return editData.kawarp_config ? { ...defaults, ...JSON.parse(editData.kawarp_config) } : defaults; } catch { return defaults; }
+    }, [editData.kawarp_config]);
+
+    const handleOptionChange = (key: string, val: number) => {
+        setEditData(prev => ({ ...prev, kawarp_config: JSON.stringify({ ...editOptions, [key]: val }) }));
+    };
+
+    const SimpleSlider = ({ label, value, min, max, step, onChange }: any) => (
+        <View style={{ marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={{ color: '#6b7280', fontSize: 11, fontWeight: '600', textTransform: 'uppercase' }}>{label}</Text>
+                <Text style={{ color: 'white', fontSize: 11 }}>{value.toFixed(2)}</Text>
+            </View>
+            <View style={{ height: 40, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <TouchableOpacity onPress={() => onChange(Math.max(min, value - step))}><Ionicons name="remove-circle-outline" size={24} color="#8E8E93" /></TouchableOpacity>
+                <View style={{ flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
+                    <View style={{ width: `${((value - min) / (max - min)) * 100}%`, height: '100%', backgroundColor: Colors.primary }} />
+                </View>
+                <TouchableOpacity onPress={() => onChange(Math.min(max, value + step))}><Ionicons name="add-circle-outline" size={24} color="#8E8E93" /></TouchableOpacity>
+            </View>
+        </View>
+    );
 
     return (
         <View className="flex-1 bg-black">
-            <KawarpBackground accent={accentColor} avatarUrl={kawarpImage} />
+            <KawarpBackground accent={accentColor} avatarUrl={kawarpImage} options={parsedOptions} />
             {renderTopNav()}
             <FlatList
                 data={posts}
@@ -1204,7 +1236,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                         </TouchableOpacity>
                     </View>
 
-                    <View style={{ alignItems: 'center', marginBottom: 28 }}>
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
+                        <View style={{ alignItems: 'center', marginBottom: 28 }}>
                         <TouchableOpacity onPress={pickAvatar} style={{ position: 'relative' }}>
                             <View style={{ width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden' }}>
                                 <Image
@@ -1269,8 +1302,24 @@ export default function ProfileScreen({ navigation, route }: any) {
                             />
                         ))}
                     </View>
+
+                    <Text style={{ color: 'white', fontSize: 15, fontWeight: '700', marginBottom: 12, marginTop: 8 }}>Dynamic Background</Text>
+                    <View style={{ width: '100%', height: 160, borderRadius: 16, overflow: 'hidden', marginBottom: 20 }}>
+                        <KawarpBackground accent={accentColor} avatarUrl={editData.avatar_url || kawarpImage} options={editOptions} />
+                    </View>
+
+                    <SimpleSlider label="Warp Intensity" value={editOptions.warpIntensity} min={0} max={1} step={0.1} onChange={(v: number) => handleOptionChange('warpIntensity', v)} />
+                    <SimpleSlider label="Blur Passes" value={editOptions.blurPasses} min={1} max={40} step={2} onChange={(v: number) => handleOptionChange('blurPasses', v)} />
+                    <SimpleSlider label="Animation Speed" value={editOptions.animationSpeed} min={0} max={5} step={0.2} onChange={(v: number) => handleOptionChange('animationSpeed', v)} />
+                    <SimpleSlider label="Scale" value={editOptions.scale} min={0.01} max={4} step={0.25} onChange={(v: number) => handleOptionChange('scale', v)} />
+                    <SimpleSlider label="Color Saturation" value={editOptions.saturation} min={0} max={3} step={0.25} onChange={(v: number) => handleOptionChange('saturation', v)} />
+                    <SimpleSliderLabelOnly label="Tint Intensity & Dithering updates dynamically" />
+
+                    </ScrollView>
                 </View>
             </Modal>
         </View>
     );
 }
+
+const SimpleSliderLabelOnly = ({ label }: any) => <Text style={{ color: '#6b7280', fontSize: 11, textAlign: 'center', marginTop: -4, marginBottom: 16 }}>{label}</Text>;
