@@ -15,6 +15,8 @@ import {
     WeeklyRecap,
     ArtistDiscographyProgressSummary,
     ArtistDiscographyProgressDetail,
+    Post,
+    AppNotification,
 } from '../types';
 
 // Auth
@@ -74,7 +76,7 @@ export const exploreApi = {
         client.get<PaginatedPosts>('/explore', { params: { page, genre } }),
     getRecommendations: () =>
         client.get<{
-            because_you_liked: Array<{ reason: string; post: any }>;
+            because_you_liked: Array<{ reason: string; post: Post }>;
             genre_chips: string[];
             artist_chips: string[];
         }>('/explore/recommendations'),
@@ -142,12 +144,12 @@ export const musicApi = {
     search: (q: string) => client.get<MusicSearchResult[]>(`/music/search?q=${encodeURIComponent(q)}`),
     searchAlbums: (q: string, albumsOnly = false) =>
         client.get<MusicSearchResult[]>(`/music/search_albums?q=${encodeURIComponent(q)}&albums_only=${albumsOnly ? 'true' : 'false'}`),
-    searchByBarcode: (barcode: string) => client.get<any>(`/music/barcode/${barcode}`),
+    searchByBarcode: (barcode: string) => client.get<MusicSearchResult>(`/music/barcode/${barcode}`),
 };
 
 // Notifications
 export const notificationsApi = {
-    getAll: () => client.get<{ notifications: any[], unread_count: number }>('/notifications'),
+    getAll: () => client.get<{ notifications: AppNotification[]; unread_count: number }>('/notifications'),
     markRead: (id: number) => client.put(`/notifications/${id}/read`),
     markAllRead: () => client.put('/notifications/read_all'),
     getPreferences: () => client.get<NotificationPreferences>('/notifications/preferences'),

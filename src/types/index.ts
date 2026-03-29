@@ -56,6 +56,16 @@ export interface Comment {
 
 export type ReactionType = 'saved' | 'on_repeat' | 'skip' | 'crate_worthy';
 
+export interface AppNotification {
+  id: number;
+  recipient_id: number;
+  actor: Pick<User, 'id' | 'username' | 'display_name' | 'avatar_url'>;
+  notif_type: 'like' | 'comment' | 'follow' | 'mention' | 'reply';
+  post_id?: number | null;
+  is_read: boolean;
+  created_at: string;
+}
+
 export interface PostReactionsPayload {
   counts: Record<string, number>;
   my_reactions: ReactionType[];

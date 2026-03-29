@@ -1,33 +1,21 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 import Toast from 'react-native-toast-message';
+import { useAuthStore } from '../store/authStore';
 
-// TODO: replace this with your actual Render service URL once deployed
+// Allow suppressToast to be set per-request on Axios config
+declare module 'axios' {
+    interface AxiosRequestConfig {
+        suppressToast?: boolean;
+    }
+    interface InternalAxiosRequestConfig {
+        suppressToast?: boolean;
+    }
+}
+
 // Format: https://<your-service-name>.onrender.com/api
 const PROD_API_BASE_URL = 'https://music-share-b4r8.onrender.com/api';
-const WEB_LOCAL_API_BASE_URL = 'http://127.0.0.1:5000/api';
 
-const getNativeDevApiBaseUrl = () => {
-    const hostUri = Constants.expoConfig?.hostUri || '';
-    const host = hostUri.split(':')[0];
-
-    if (host) {
-        return `http://${host}:5000/api`;
-    }
-
-    // Android emulator fallback
-    if (Platform.OS === 'android') {
-        return 'http://10.0.2.2:5000/api';
-    }
-
-    return 'http://127.0.0.1:5000/api';
-};
-
-const LOCAL_API_BASE_URL = Platform.OS === 'web' ? WEB_LOCAL_API_BASE_URL : getNativeDevApiBaseUrl();
-
-// Force production logic
 export const API_BASE_URL = PROD_API_BASE_URL;
 
 const client = axios.create({
@@ -47,17 +35,18 @@ client.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            AsyncStorage.removeItem('auth_token');
+            // Clear storage AND reset the Zustand store so the app
+            // doesn't keep showing as logged-in after token expiry.
+            useAuthStore.getState().logout();
         }
 
         // Global Error Toaster
         const errorMessage = error.response?.data?.error || error.message || 'An unexpected error occurred';
-        
+
         // Suppress toasts for the initial auth/me check when simply not logged in
         const isAuthMe = error.config?.url?.includes('/auth/me');
         const isSpotifyLivePoll = error.config?.url?.includes('/integrations/spotify/live');
-        const suppressToast = error.config?.suppressToast || error.config?.headers?.['x-suppress-toast'];
-        if (!isAuthMe && !isSpotifyLivePoll && !suppressToast) {
+        if (!isAuthMe && !isSpotifyLivePoll && !error.config?.suppressToast) {
             Toast.show({
                 type: 'error',
                 text1: 'Oops!',
