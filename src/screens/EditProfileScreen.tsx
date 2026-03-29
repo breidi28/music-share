@@ -134,9 +134,9 @@ export default function EditProfileScreen({ navigation }: any) {
     const SimpleSliderLabelOnly = ({ label }: any) => <Text style={{ color: '#6b7280', fontSize: 11, textAlign: 'center', marginTop: -4, marginBottom: 16 }}>{label}</Text>;
 
     const getPreviewImage = (bgUrl: string) => {
-        if (bgUrl === 'track' || bgUrl === 'auto') return form.avatar_url; // Settings preview defaults track to avatar
-        if (bgUrl === 'avatar') return form.avatar_url;
-        if (bgUrl === 'accent') return undefined;
+        if (bgUrl === 'track' || bgUrl === 'auto') return 'https://images.unsplash.com/photo-1614613500854-ce1f148902ee?w=400&q=80'; // Explicit generic track art
+        if (bgUrl === 'avatar') return form.avatar_url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=80'; // Avatar or generic portrait pattern
+        if (bgUrl === 'accent') return undefined; // Will evaluate to gradient
         return bgUrl;
     };
 
