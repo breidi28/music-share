@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, Image, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, Image, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
@@ -9,6 +9,7 @@ import { usersApi } from '../api/endpoints';
 import { useAuthStore } from '../store/authStore';
 import { API_BASE_URL } from '../api/client';
 import { Colors } from '../theme';
+import KawarpBackground from '../components/KawarpBackground';
 
 const PROFILE_ACCENTS = ['#FA243C', '#10B981', '#3B82F6', '#F59E0B', '#A855F7', '#14B8A6'];
 
@@ -29,6 +30,7 @@ export default function EditProfileScreen({ navigation }: any) {
         bio: '',
         favorite_genres: '',
         avatar_url: '',
+        kawarp_config: '',
     });
 
     useEffect(() => {
@@ -48,6 +50,7 @@ export default function EditProfileScreen({ navigation }: any) {
                     bio: profile.bio || '',
                     favorite_genres: profile.favorite_genres || '',
                     avatar_url: profile.avatar_url || '',
+                    kawarp_config: profile.kawarp_config || '',
                 });
                 if (storedAccent) setAccentColor(storedAccent);
             } catch { }
@@ -94,6 +97,33 @@ export default function EditProfileScreen({ navigation }: any) {
         setSaving(false);
     };
 
+    const editOptions = React.useMemo(() => {
+        const defaults = { warpIntensity: 1.0, blurPasses: 8, animationSpeed: 1.0, transitionDuration: 1000, saturation: 1.5, tintIntensity: 0.15, dithering: 0.008, scale: 1.0 };
+        try { return form.kawarp_config ? { ...defaults, ...JSON.parse(form.kawarp_config) } : defaults; } catch { return defaults; }
+    }, [form.kawarp_config]);
+
+    const handleOptionChange = (key: string, val: number) => {
+        setForm(prev => ({ ...prev, kawarp_config: JSON.stringify({ ...editOptions, [key]: val }) }));
+    };
+
+    const SimpleSlider = ({ label, value, min, max, step, onChange }: any) => (
+        <View style={{ marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={{ color: '#6b7280', fontSize: 11, fontWeight: '600', textTransform: 'uppercase' }}>{label}</Text>
+                <Text style={{ color: 'white', fontSize: 11 }}>{value.toFixed(2)}</Text>
+            </View>
+            <View style={{ height: 40, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <TouchableOpacity onPress={() => onChange(Math.max(min, value - step))}><Ionicons name="remove-circle-outline" size={24} color="#8E8E93" /></TouchableOpacity>
+                <View style={{ flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
+                    <View style={{ width: `${((value - min) / (max - min)) * 100}%`, height: '100%', backgroundColor: Colors.primary }} />
+                </View>
+                <TouchableOpacity onPress={() => onChange(Math.min(max, value + step))}><Ionicons name="add-circle-outline" size={24} color="#8E8E93" /></TouchableOpacity>
+            </View>
+        </View>
+    );
+
+    const SimpleSliderLabelOnly = ({ label }: any) => <Text style={{ color: '#6b7280', fontSize: 11, textAlign: 'center', marginTop: -4, marginBottom: 16 }}>{label}</Text>;
+
     return (
         <View style={{ flex: 1, backgroundColor: '#0A0A0F', paddingTop: Platform.OS === 'ios' ? insets.top + 6 : insets.top + 12, paddingHorizontal: 20 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
@@ -111,7 +141,8 @@ export default function EditProfileScreen({ navigation }: any) {
                     <ActivityIndicator color={Colors.primary} size="large" />
                 </View>
             ) : (
-                <>
+                <View style={{ flex: 1 }}>
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
                     <View style={{ alignItems: 'center', marginBottom: 28 }}>
                         <TouchableOpacity onPress={pickAvatar} style={{ position: 'relative' }}>
                             <View style={{ width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden' }}>
@@ -177,7 +208,21 @@ export default function EditProfileScreen({ navigation }: any) {
                             />
                         ))}
                     </View>
-                </>
+
+                    <Text style={{ color: 'white', fontSize: 15, fontWeight: '700', marginBottom: 12, marginTop: 8 }}>Dynamic Background</Text>
+                    <View style={{ width: '100%', height: 160, borderRadius: 16, overflow: 'hidden', marginBottom: 20 }}>
+                        <KawarpBackground accent={accentColor} avatarUrl={form.avatar_url} options={editOptions} />
+                    </View>
+
+                    <SimpleSlider label="Warp Intensity" value={editOptions.warpIntensity} min={0} max={1} step={0.1} onChange={(v: number) => handleOptionChange('warpIntensity', v)} />
+                    <SimpleSlider label="Blur Passes" value={editOptions.blurPasses} min={1} max={40} step={2} onChange={(v: number) => handleOptionChange('blurPasses', v)} />
+                    <SimpleSlider label="Animation Speed" value={editOptions.animationSpeed} min={0} max={5} step={0.2} onChange={(v: number) => handleOptionChange('animationSpeed', v)} />
+                    <SimpleSlider label="Scale" value={editOptions.scale} min={0.01} max={4} step={0.25} onChange={(v: number) => handleOptionChange('scale', v)} />
+                    <SimpleSlider label="Color Saturation" value={editOptions.saturation} min={0} max={3} step={0.25} onChange={(v: number) => handleOptionChange('saturation', v)} />
+                    <SimpleSliderLabelOnly label="Tint Intensity & Dithering updates dynamically" />
+
+                    </ScrollView>
+                </View>
             )}
         </View>
     );
