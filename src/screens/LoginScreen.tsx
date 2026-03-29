@@ -51,12 +51,13 @@ export default function LoginScreen({ navigation }: any) {
         let isMounted = true;
         
         const checkServer = async () => {
-            // If it takes more than 1 second to respond, assume the free instance is waking up
+            // Show the "waking up" banner only after 3.5s — enough to rule out
+            // normal network latency and actually indicate a cold start.
             const slowWakeTimeout = setTimeout(() => {
                 if (isMounted) {
                     setServerStatus('waking');
                 }
-            }, 1000);
+            }, 3500);
             
             try {
                 // Large timeout because cold start can take 50 seconds

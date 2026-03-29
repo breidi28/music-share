@@ -10,7 +10,7 @@ interface AuthState {
     isAuthenticated: boolean;
     login: (username: string, password: string) => Promise<void>;
     register: (data: { username: string; email: string; password: string; display_name: string; bio?: string; favorite_genres?: string }) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
     loadStoredAuth: () => Promise<void>;
     updateUser: (user: User) => void;
 }

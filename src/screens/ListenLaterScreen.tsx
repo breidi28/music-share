@@ -84,7 +84,7 @@ export default function ListenLaterScreen({ navigation }: any) {
                                 Nothing saved yet
                             </Text>
                             <Text style={{ color: '#6b7280', fontSize: 14, textAlign: 'center', marginTop: 8 }}>
-                                Save tracks from posts using the clock icon and they will show up here.
+                                Save tracks from posts using the bookmark icon and they will show up here.
                             </Text>
                         </View>
                     }

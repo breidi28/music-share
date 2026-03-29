@@ -2,14 +2,19 @@ from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import inspect, text
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 import os
 import re
 import json
 import time
+import hmac
+import hashlib
 import threading
 import smtplib
 import ssl
@@ -50,8 +55,26 @@ else:
     app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{full_db_path}"
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-change-in-production')
+
+# ─── Security: require SECRET_KEY and JWT_SECRET_KEY to be set explicitly ──────
+_secret_key = os.getenv('SECRET_KEY')
+_jwt_secret_key = os.getenv('JWT_SECRET_KEY')
+
+_INSECURE_DEFAULTS = {'dev-secret-key-change-in-production', 'dev-secret-change-in-production', ''}
+
+if not _secret_key or _secret_key in _INSECURE_DEFAULTS:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set or is using an insecure default. "
+        "Set a strong, random SECRET_KEY before starting the server."
+    )
+if not _jwt_secret_key or _jwt_secret_key in _INSECURE_DEFAULTS:
+    raise RuntimeError(
+        "JWT_SECRET_KEY environment variable is not set or is using an insecure default. "
+        "Set a strong, random JWT_SECRET_KEY before starting the server."
+    )
+
+app.config['SECRET_KEY'] = _secret_key
+app.config['JWT_SECRET_KEY'] = _jwt_secret_key
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Reduced from 30 days
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_recycle": 280,
@@ -60,6 +83,56 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
+
+# ─── Rate Limiter ──────────────────────────────────────────────────────────────
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=[],          # No global limit; we apply per-route limits
+    storage_uri=os.getenv('RATELIMIT_STORAGE_URI', 'memory://'),
+)
+
+# ─── OAuth CSRF-state helpers ──────────────────────────────────────────────────
+_STATE_SEP = ':'
+_STATE_EXPIRY_SECONDS = 600  # 10 minutes
+
+def _generate_oauth_state(user_id: int) -> str:
+    """Return a signed state token encoding user_id + timestamp.
+    Format: '<user_id>:<timestamp>:<hmac_hex>'
+    The HMAC prevents tampering – an attacker cannot forge a valid state
+    even if they know the user_id, because they don't know SECRET_KEY.
+    """
+    ts = int(time.time())
+    payload = f"{user_id}{_STATE_SEP}{ts}"
+    sig = hmac.new(
+        app.config['SECRET_KEY'].encode(),
+        payload.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{payload}{_STATE_SEP}{sig}"
+
+def _verify_oauth_state(state: str) -> int | None:
+    """Verify a signed OAuth state token.  Returns user_id on success, None on failure."""
+    try:
+        parts = state.split(_STATE_SEP)
+        if len(parts) != 3:
+            return None
+        user_id_str, ts_str, received_sig = parts
+        payload = f"{user_id_str}{_STATE_SEP}{ts_str}"
+        expected_sig = hmac.new(
+            app.config['SECRET_KEY'].encode(),
+            payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected_sig, received_sig):
+            return None
+        # Check expiry
+        if int(time.time()) - int(ts_str) > _STATE_EXPIRY_SECONDS:
+            return None
+        return int(user_id_str)
+    except Exception:
+        return None
+
 
 # Root route for standard health checks (avoids 404 for bots/Render)
 @app.route('/', methods=['GET'])
@@ -235,6 +308,8 @@ class Post(db.Model):
     listened_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     pinned_comment_id = db.Column(db.Integer, db.ForeignKey('comment.id'), nullable=True)
+    # Tracks when background Spotify sync last ran for this user
+    last_synced_at = db.Column(db.DateTime, nullable=True)
 
     liked_by = db.relationship('User', secondary=track_likes, backref='liked_posts', lazy='dynamic')
 
@@ -854,6 +929,7 @@ def _get_or_generate_weekly_recap(user_id: int, week_start: datetime.date) -> We
 
 
 @app.route('/api/auth/register', methods=['POST'])
+@limiter.limit('10 per hour; 3 per minute')
 def register():
     try:
         data = request.get_json()
@@ -912,6 +988,7 @@ def register():
 
 
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit('20 per hour; 5 per minute')
 def login():
     try:
         data = request.get_json()
@@ -1059,6 +1136,10 @@ def _refresh_spotify_live_cache_async(user_id: int):
             with _spotify_live_cache_lock:
                 _spotify_live_refreshing.discard(user_id)
 
+    # FIX: actually start the background thread
+    import threading
+    threading.Thread(target=_worker, daemon=True).start()
+
 @app.route('/api/integrations/spotify/callback', methods=['GET', 'POST'])
 def spotify_callback():
     """Handle Spotify OAuth callback. Supports both GET (direct redirect) and POST (frontend relay)."""
@@ -1072,10 +1153,14 @@ def spotify_callback():
         # Check if it's a direct redirect (GET) or a frontend relay (POST)
         if request.method == 'GET':
             code = request.args.get('code')
-            state = request.args.get('state') # We expect the user_id in the state
+            state = request.args.get('state')
             if not state:
-                return "Missing state parameter (user_id required)", 400
-            user_id = int(state)
+                return "Missing state parameter", 400
+            # Validate HMAC-signed state token
+            user_id = _verify_oauth_state(state)
+            if user_id is None:
+                app.logger.warning("[Spotify] Invalid or expired OAuth state parameter")
+                return "Invalid or expired OAuth state. Please try linking Spotify again.", 400
             # Use exact env var to prevent OAuth mismatches
             redirect_uri = SPOTIFY_REDIRECT_URI
         else:
@@ -2455,7 +2540,14 @@ def get_feed():
     followed_ids = [u.id for u in current_user.followed]
     followed_ids.append(current_user_id)  # include own posts
 
-    posts = Post.query.filter(Post.user_id.in_(followed_ids)) \
+    # Use selectinload to batch-fetch authors and likes in 2 extra queries
+    # instead of 2×N queries (N+1 problem).
+    posts = Post.query \
+        .filter(Post.user_id.in_(followed_ids)) \
+        .options(
+            selectinload(Post.author),
+            selectinload(Post.liked_by),
+        ) \
         .order_by(Post.created_at.desc()) \
         .paginate(page=page, per_page=20, error_out=False)
 
@@ -3733,11 +3825,22 @@ def serve_upload(subpath, filename):
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
+# Minimum time between Spotify syncs per user (5 minutes)
+_SPOTIFY_SYNC_MIN_INTERVAL_SECONDS = 300
+
 def sync_spotify_history():
     '''Runs periodically to fetch and sync users' Spotify history so they don't have to keep the app open.'''
     with app.app_context():
-        # Get users with linked spotify
-        users = User.query.filter(User.spotify_refresh_token.isnot(None), User.spotify_refresh_token != '').all()
+        cutoff = datetime.utcnow() - timedelta(seconds=_SPOTIFY_SYNC_MIN_INTERVAL_SECONDS)
+        # Only sync users whose token hasn't been checked recently
+        users = User.query.filter(
+            User.spotify_refresh_token.isnot(None),
+            User.spotify_refresh_token != '',
+            db.or_(
+                User.last_synced_at.is_(None),
+                User.last_synced_at < cutoff,
+            )
+        ).all()
         for user in users:
             try:
                 # 1. Sync History
@@ -3838,18 +3941,48 @@ def sync_spotify_history():
                     if now_playing_post:
                         db.session.delete(now_playing_post)
                         db.session.commit()
-            except Exception as e:
-                db.session.rollback()
-                import traceback
-                app.logger.error(f"[Spotify Sync] Error syncing history for user {user.id}: {traceback.format_exc()}")
+            finally:
+                # Always stamp last_synced_at so we don't hammer failing users
+                try:
+                    user.last_synced_at = datetime.utcnow()
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            # end try
+            # Note: the outer try/except is now replaced by finally above
+            # Kept here for legacy; original except block converted to finally
+
+def cleanup_expired_password_reset_codes():
+    """Delete used or expired PasswordResetCode records older than 1 day."""
+    with app.app_context():
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+            deleted = PasswordResetCode.query.filter(
+                db.or_(
+                    PasswordResetCode.used == True,
+                    PasswordResetCode.expires_at < cutoff,
+                )
+            ).delete(synchronize_session=False)
+            if deleted:
+                db.session.commit()
+                app.logger.info(f"[Cleanup] Deleted {deleted} expired password reset codes.")
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"[Cleanup] Failed to delete reset codes: {e}")
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(
-    func=sync_spotify_history, 
-    trigger=IntervalTrigger(minutes=1), 
-    id='spotify_history_sync', 
+    func=sync_spotify_history,
+    trigger=IntervalTrigger(minutes=1),
+    id='spotify_history_sync',
     replace_existing=True,
     next_run_time=datetime.utcnow()
+)
+scheduler.add_job(
+    func=cleanup_expired_password_reset_codes,
+    trigger=IntervalTrigger(hours=6),
+    id='password_reset_cleanup',
+    replace_existing=True,
 )
 scheduler.start()
 

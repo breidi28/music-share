@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Backup files — never commit these to source control
+*.bak
+*.bak.*

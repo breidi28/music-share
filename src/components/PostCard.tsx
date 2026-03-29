@@ -159,7 +159,10 @@ export default function PostCard({
     const cfg       = TYPE_CFG[post.post_type] ?? TYPE_CFG.loved;
     const source    = detectSourceService(post);
     const avatarBg  = AVATAR_COLORS[post.author.id % AVATAR_COLORS.length];
-    const timeAgo   = formatDistanceToNow(new Date(post.created_at), { addSuffix: true });
+    const timeAgo   = (() => {
+        try { return formatDistanceToNow(new Date(post.created_at), { addSuffix: true }); }
+        catch { return ''; }
+    })();
     const isNowPlay = post.post_type === 'now_playing';
 
     return (

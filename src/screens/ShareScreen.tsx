@@ -155,14 +155,14 @@ export default function ShareScreen({ navigation }: any) {
                 preview_url: selected.preview_url,
                 genre: selected.genre,
             });
+            // Clear form state first, then replace so the back button can't
+            // return to a half-reset Share form.
             setSelected(null);
             setCaption('');
             setPostType('loved');
-            
-            // Navigate FIRST, before React applies the state changes completely, to avoid mounting errors.
-            navigation.navigate('Feed');
-            
-            // Add a small delay for Toast to ensure the new screen is mounted first
+            setSelectedTemplate(null);
+            navigation.replace('Feed');
+
             setTimeout(() => {
                 Toast.show({
                     type: 'success',
