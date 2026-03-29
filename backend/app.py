@@ -4093,11 +4093,30 @@ def reset_password():
         app.logger.error(f"Reset password error: {str(e)}")
         return jsonify({'error': 'An internal error occurred'}), 500
 
+
+def _ensure_phase0_schema():
+    """
+    Idempotent DDL migrations for columns added after initial deploy.
+    Uses IF NOT EXISTS so it's safe to run on every startup.
+    Add new ALTER TABLE statements here instead of using Flask-Migrate.
+    """
+    from sqlalchemy import text
+    statements = [
+        # Added: per-user throttle for Spotify background sync
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP',
+    ]
+    with db.engine.connect() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))
+        conn.commit()
+    app.logger.info('Phase-0 schema migrations applied.')
+
 with app.app_context():
     try:
         _ensure_phase0_schema()
     except Exception as e:
         app.logger.warning(f'Phase 0 schema ensure skipped: {str(e)}')
+
 
 
 if __name__ == '__main__':
