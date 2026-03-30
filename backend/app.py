@@ -175,30 +175,25 @@ def _verify_oauth_state(state: str) -> int | None:
 def _ensure_phase0_schema():
     """
     Idempotent DDL migrations for columns added after initial deploy.
-    SQLite doesn't support 'ADD COLUMN IF NOT EXISTS', so we check manually.
+    Uses SQLAlchemy inspector to be database-agnostic (works on SQLite and Postgres).
     """
-    from sqlalchemy import text
+    from sqlalchemy import text, inspect
     
     # 1. Ensure all tables exist first
     db.create_all()
     
     # 2. Check and add missing columns manually for older DBs
-    with db.engine.connect() as conn:
-        # User table
-        result = conn.execute(text('PRAGMA table_info("user")'))
-        user_cols = [row[1] for row in result.fetchall()]
-        
-        # Post table
-        result = conn.execute(text('PRAGMA table_info("post")'))
-        post_cols = [row[1] for row in result.fetchall()]
-        
-        # Comment table
-        result = conn.execute(text('PRAGMA table_info("comment")'))
-        comment_cols = [row[1] for row in result.fetchall()]
+    inspector = inspect(db.engine)
+    
+    # Note: 'user' table name might be quoted in some dialects, but inspector expects the raw name
+    user_cols = {c['name'] for c in inspector.get_columns('user')}
+    post_cols = {c['name'] for c in inspector.get_columns('post')}
+    comment_cols = {c['name'] for c in inspector.get_columns('comment')}
     
     statements = []
     
     # User additions
+    # Note: Using double quotes for table name "user" because it is a reserved keyword in Postgres
     if 'last_synced_at' not in user_cols:
         statements.append('ALTER TABLE "user" ADD COLUMN last_synced_at TIMESTAMP')
     if 'kawarp_config' not in user_cols:
@@ -229,6 +224,8 @@ def _ensure_phase0_schema():
                 app.logger.warning(f"Migration statement failed: {stmt} - Error: {str(e)}")
         conn.commit()
     app.logger.info('Phase-0 schema migrations completed.')
+
+
 
 # Run migrations immediately upon startup
 with app.app_context():
