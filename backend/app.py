@@ -84,20 +84,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
-# ─── Global JSON Error Handlers ───────────────────────────────────────────────
-
-@app.route('/', methods=['GET'])
-def index_health():
-    return jsonify({
-        'status': 'online',
-        'message': 'MusicShare API is running.',
-        'version': '1.1.0'
-    }), 200
-
-@app.route('/api/health', methods=['GET'])
-def api_health():
-    return jsonify({'status': 'healthy', 'timestamp': datetime.now(timezone.utc).isoformat()}), 200
-
+# ─── Admin static handler and other helpers ───────────────────────────────────
 @app.route('/admin', methods=['GET'])
 @app.route('/admin/', methods=['GET'])
 def serve_admin():
