@@ -115,6 +115,21 @@ def unhandled_exception(e):
     db.session.rollback()
     return jsonify({'error': 'Unexpected server error', 'detail': str(e)}), 500
 
+from functools import wraps
+
+def admin_required():
+    def wrapper(fn):
+        @wraps(fn)
+        def decorator(*args, **kwargs):
+            verify_jwt_in_request()
+            user_id = get_jwt_identity()
+            user = db.session.get(User, int(user_id))
+            if not user or not user.is_admin:
+                return jsonify({'error': 'Admin access required'}), 403
+            return fn(*args, **kwargs)
+        return decorator
+    return wrapper
+
 
 # ─── OAuth CSRF-state helpers ──────────────────────────────────────────────────
 _STATE_SEP = ':'
@@ -148,7 +163,7 @@ def _verify_oauth_state(state: str) -> int | None:
             payload.encode(),
             hashlib.sha256,
         ).hexdigest()
-        if not hmac.compare_digest(expected_sig, received_sig):
+        if not hmac.compare_digest(received_sig, expected_sig):
             return None
         # Check expiry
         if int(time.time()) - int(ts_str) > _STATE_EXPIRY_SECONDS:
@@ -156,6 +171,72 @@ def _verify_oauth_state(state: str) -> int | None:
         return int(user_id_str)
     except Exception:
         return None
+
+def _ensure_phase0_schema():
+    """
+    Idempotent DDL migrations for columns added after initial deploy.
+    SQLite doesn't support 'ADD COLUMN IF NOT EXISTS', so we check manually.
+    """
+    from sqlalchemy import text
+    
+    # 1. Ensure all tables exist first
+    db.create_all()
+    
+    # 2. Check and add missing columns manually for older DBs
+    with db.engine.connect() as conn:
+        # User table
+        result = conn.execute(text('PRAGMA table_info("user")'))
+        user_cols = [row[1] for row in result.fetchall()]
+        
+        # Post table
+        result = conn.execute(text('PRAGMA table_info("post")'))
+        post_cols = [row[1] for row in result.fetchall()]
+        
+        # Comment table
+        result = conn.execute(text('PRAGMA table_info("comment")'))
+        comment_cols = [row[1] for row in result.fetchall()]
+    
+    statements = []
+    
+    # User additions
+    if 'last_synced_at' not in user_cols:
+        statements.append('ALTER TABLE "user" ADD COLUMN last_synced_at TIMESTAMP')
+    if 'kawarp_config' not in user_cols:
+        statements.append('ALTER TABLE "user" ADD COLUMN kawarp_config VARCHAR(1000)')
+    if 'is_admin' not in user_cols:
+        statements.append('ALTER TABLE "user" ADD COLUMN is_admin BOOLEAN DEFAULT FALSE')
+    if 'is_banned' not in user_cols:
+        statements.append('ALTER TABLE "user" ADD COLUMN is_banned BOOLEAN DEFAULT FALSE')
+        
+    # Post additions
+    if 'pinned_comment_id' not in post_cols:
+        statements.append('ALTER TABLE post ADD COLUMN pinned_comment_id INTEGER')
+        
+    # Comment additions
+    if 'parent_id' not in comment_cols:
+        statements.append('ALTER TABLE comment ADD COLUMN parent_id INTEGER')
+        
+    if not statements:
+        app.logger.info('Schema is up to date.')
+        return
+
+    with db.engine.connect() as conn:
+        for stmt in statements:
+            try:
+                conn.execute(text(stmt))
+                app.logger.info(f"Applied migration: {stmt}")
+            except Exception as e:
+                app.logger.warning(f"Migration statement failed: {stmt} - Error: {str(e)}")
+        conn.commit()
+    app.logger.info('Phase-0 schema migrations completed.')
+
+# Run migrations immediately upon startup
+with app.app_context():
+    try:
+        _ensure_phase0_schema()
+    except Exception as e:
+        app.logger.warning(f'Phase 0 schema ensure skipped: {str(e)}')
+
 
 
 # Root route for standard health checks (avoids 404 for bots/Render)
@@ -240,6 +321,8 @@ class User(db.Model):
     favorite_genres = db.Column(db.String(500), default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     last_post_date = db.Column(db.Date, nullable=True)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    is_banned = db.Column(db.Boolean, default=False, nullable=False)
 
     # Spotify OAuth
     spotify_access_token = db.Column(db.String(500), default='')
@@ -310,6 +393,9 @@ class User(db.Model):
             'has_deezer_linked': bool(self.deezer_access_token),
             'collection_count': len(self.collection_items) if hasattr(self, 'collection_items') else 0,
             'kawarp_config': self.kawarp_config,
+            'is_admin': self.is_admin,
+            'is_banned': self.is_banned,
+            'email': self.email,  # Useful for management
         }
         if current_user_id:
             try:
@@ -645,24 +731,7 @@ def _get_or_create_notification_preferences(user_id: int) -> NotificationPrefere
     return prefs
 
 
-def _ensure_phase0_schema() -> None:
-    """Best-effort schema compatibility for existing deployments without migrations."""
-    db.create_all()
-    inspector = inspect(db.engine)
 
-    if 'post' in inspector.get_table_names():
-        post_cols = {c['name'] for c in inspector.get_columns('post')}
-        if 'pinned_comment_id' not in post_cols:
-            with db.engine.connect() as conn:
-                conn.execute(text('ALTER TABLE post ADD COLUMN pinned_comment_id INTEGER'))
-                conn.commit()
-
-    if 'comment' in inspector.get_table_names():
-        comment_cols = {c['name'] for c in inspector.get_columns('comment')}
-        if 'parent_id' not in comment_cols:
-            with db.engine.connect() as conn:
-                conn.execute(text('ALTER TABLE comment ADD COLUMN parent_id INTEGER'))
-                conn.commit()
 
 
 def _generate_apple_music_token():
@@ -4195,29 +4264,81 @@ def reset_password():
         return jsonify({'error': 'An internal error occurred'}), 500
 
 
-def _ensure_phase0_schema():
-    """
-    Idempotent DDL migrations for columns added after initial deploy.
-    Uses IF NOT EXISTS so it's safe to run on every startup.
-    Add new ALTER TABLE statements here instead of using Flask-Migrate.
-    """
-    from sqlalchemy import text
-    statements = [
-        # Added: per-user throttle for Spotify background sync
-        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP',
-        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS kawarp_config VARCHAR(1000)',
-    ]
-    with db.engine.connect() as conn:
-        for stmt in statements:
-            conn.execute(text(stmt))
-        conn.commit()
-    app.logger.info('Phase-0 schema migrations applied.')
+# ─── Administrative Endpoints ───────────────────────────────────────────────────
 
-with app.app_context():
-    try:
-        _ensure_phase0_schema()
-    except Exception as e:
-        app.logger.warning(f'Phase 0 schema ensure skipped: {str(e)}')
+@app.route('/api/admin/stats', methods=['GET'])
+@admin_required()
+def admin_stats():
+    """General app usage statistics for the admin dashboard."""
+    user_count = User.query.count()
+    post_count = Post.query.count()
+    comment_count = Comment.query.count()
+    
+    # Last 24 hours
+    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    new_users_24h = User.query.filter(User.created_at >= since_24h).count()
+    new_posts_24h = Post.query.filter(Post.created_at >= since_24h).count()
+    
+    # Service linked counts
+    spotify_linked = User.query.filter(User.spotify_access_token != '').count()
+    youtube_linked = User.query.filter(User.youtube_access_token != '').count()
+    
+    return jsonify({
+        'users': user_count,
+        'posts': post_count,
+        'comments': comment_count,
+        'new_users_24h': new_users_24h,
+        'new_posts_24h': new_posts_24h,
+        'linked_services': {
+            'spotify': spotify_linked,
+            'youtube': youtube_linked
+        }
+    })
+
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required()
+def admin_get_users():
+    """List all users for management."""
+    users = User.query.all()
+    return jsonify([u.to_dict() for u in users])
+
+@app.route('/api/admin/users/<int:user_id>/ban', methods=['POST'])
+@admin_required()
+def admin_toggle_ban(user_id):
+    """Ban/unban a user."""
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+        
+    user.is_banned = not user.is_banned
+    db.session.commit()
+    return jsonify({
+        'message': f'User {"banned" if user.is_banned else "unbanned"} successfully',
+        'is_banned': user.is_banned
+    })
+
+@app.route('/api/admin/users/<int:user_id>/admin', methods=['POST'])
+@admin_required()
+def admin_toggle_admin(user_id):
+    """Promote/demote a user to/from admin."""
+    # Prevent self-demotion
+    current_admin_id = int(get_jwt_identity())
+    if current_admin_id == user_id:
+        return jsonify({'error': 'Cannot change your own admin status'}), 400
+
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+        
+    user.is_admin = not user.is_admin
+    db.session.commit()
+    return jsonify({
+        'message': f'User {"promoted to" if user.is_admin else "demoted from"} admin successfully',
+        'is_admin': user.is_admin
+    })
+
+
+
 
 
 
