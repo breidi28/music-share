@@ -15,12 +15,16 @@ declare module 'axios' {
 
 // Format: https://<your-service-name>.onrender.com/api
 const PROD_API_BASE_URL = 'https://music-share-b4r8.onrender.com/api';
+// For local development: Replace with your local machine's IP (e.g. 'http://192.168.1.5:5000/api')
+const LOCAL_API_BASE_URL = 'http://localhost:5000/api';
 
-export const API_BASE_URL = PROD_API_BASE_URL;
+// Toggle between LOCAL and PROD here
+// NOTE: Use local URL if you are running 'python app.py' locally.
+export const API_BASE_URL = __DEV__ ? LOCAL_API_BASE_URL : PROD_API_BASE_URL;
 
 const client = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 10000,
+    timeout: 20000, 
 });
 
 client.interceptors.request.use(async (config) => {
