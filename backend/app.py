@@ -1478,19 +1478,16 @@ def spotify_disconnect():
 
 # ─── YouTube Music Integration ────────────────────────────────────────────────
 
-def _get_ytmusic_client(user):
-    """Get YTMusic client with OAuth credentials for the user."""
+def _youtube_api_get(user, path: str, params: dict = None):
+    """Make an authenticated GET request to the YouTube Data API v3.
+    Refreshes the access token if expired. Returns (json, error_str)."""
     if not user.youtube_access_token:
-        app.logger.warning(f'[YouTube Music] User {user.id} has no access token')
         return None, 'YouTube Music not linked'
 
-    # Check if token needs refresh
+    # Refresh token if expired
     if user.youtube_token_expires_at and datetime.utcnow() > user.youtube_token_expires_at:
         if not user.youtube_refresh_token:
-            app.logger.warning(f'[YouTube Music] User {user.id} token expired and no refresh token')
-            return None, 'YouTube Music token expired - please reconnect'
-        
-        app.logger.info(f'[YouTube Music] Refreshing token for user {user.id}')
+            return None, 'YouTube Music token expired — please reconnect'
         try:
             res = requests.post(
                 'https://oauth2.googleapis.com/token',
@@ -1498,43 +1495,38 @@ def _get_ytmusic_client(user):
                     'grant_type': 'refresh_token',
                     'refresh_token': user.youtube_refresh_token,
                     'client_id': YOUTUBE_CLIENT_ID,
-                    'client_secret': YOUTUBE_CLIENT_SECRET
+                    'client_secret': YOUTUBE_CLIENT_SECRET,
                 },
                 headers={'Content-Type': 'application/x-www-form-urlencoded'},
-                timeout=10
+                timeout=10,
             )
             info = res.json()
             if 'access_token' in info:
                 user.youtube_access_token = info['access_token']
                 user.youtube_token_expires_at = datetime.utcnow() + timedelta(seconds=info.get('expires_in', 3600))
                 db.session.commit()
-                app.logger.info(f'[YouTube Music] Token refreshed successfully for user {user.id}')
+                app.logger.info(f'[YouTube] Token refreshed for user {user.id}')
             else:
-                app.logger.error(f'[YouTube Music] Token refresh failed for user {user.id}: {info}')
-                return None, 'Token refresh failed'
+                app.logger.error(f'[YouTube] Token refresh failed: {info}')
+                return None, 'Token refresh failed — please reconnect YouTube Music'
         except Exception as e:
-            app.logger.error(f'[YouTube Music] Token refresh exception for user {user.id}: {str(e)}')
             return None, str(e)
 
+    base = 'https://www.googleapis.com/youtube/v3'
     try:
-        import json as _json
-        # auth= receives the token data; oauth_credentials= receives the client id/secret
-        # for automatic token refresh by ytmusicapi
-        token_data = _json.dumps({
-            "access_token": user.youtube_access_token,
-            "refresh_token": user.youtube_refresh_token,
-            "token_type": "Bearer",
-            "expires_in": 3600,
-            "scope": "https://www.googleapis.com/auth/youtube.readonly",
-        })
-        oauth_creds = OAuthCredentials(
-            client_id=YOUTUBE_CLIENT_ID,
-            client_secret=YOUTUBE_CLIENT_SECRET,
+        r = requests.get(
+            f'{base}/{path}',
+            headers={'Authorization': f'Bearer {user.youtube_access_token}'},
+            params=params or {},
+            timeout=10,
         )
-        ytmusic = YTMusic(auth=token_data, oauth_credentials=oauth_creds)
-        return ytmusic, None
+        if r.status_code == 401:
+            return None, 'Unauthorized — please reconnect YouTube Music'
+        if r.status_code >= 400:
+            app.logger.error(f'[YouTube API] {r.status_code}: {r.text[:300]}')
+            return None, f'YouTube API error {r.status_code}'
+        return r.json(), None
     except Exception as e:
-        app.logger.error(f'[YouTube Music] Client creation failed for user {user.id}: {str(e)}')
         return None, str(e)
 
 
@@ -1664,97 +1656,117 @@ def youtube_link_token():
 @app.route('/api/integrations/youtube/playlists', methods=['GET'])
 @jwt_required()
 def youtube_playlists():
-    """User's YouTube Music playlists."""
-    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
-    user = db.get_or_404(User, user_id)
-
-    # Use ytmusicapi to fetch YouTube Music playlists
-    ytmusic, err = _get_ytmusic_client(user)
-    if err:
-        app.logger.error(f'[YouTube Music Playlists] Error for user {user_id}: {err}')
-        return jsonify({'error': err}), 400
-
+    """User's YouTube playlists via YouTube Data API v3."""
     try:
-        # Get library playlists (user's playlists in YouTube Music)
-        library_playlists = ytmusic.get_library_playlists(limit=25)
-        app.logger.info(f'[YouTube Music Playlists] Found {len(library_playlists)} playlists for user {user_id}')
-        
+        user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+        user = db.get_or_404(User, user_id)
+
+        data, err = _youtube_api_get(user, 'playlists', {
+            'part': 'snippet,contentDetails',
+            'mine': 'true',
+            'maxResults': 25,
+        })
+        if err:
+            app.logger.error(f'[YouTube Playlists] Error for user {user_id}: {err}')
+            return jsonify({'error': err}), 400
+
+        items = (data or {}).get('items', [])
         playlists = []
-        for p in library_playlists:
+        for p in items:
+            snippet = p.get('snippet', {})
+            thumbs = snippet.get('thumbnails', {})
+            thumb_url = (thumbs.get('high') or thumbs.get('medium') or thumbs.get('default') or {}).get('url', '')
             playlists.append({
-                'name': p.get('title', ''),
-                'description': p.get('description', '') or '',
-                'image_url': p.get('thumbnails', [{}])[0].get('url', '') if p.get('thumbnails') else '',
-                'track_count': p.get('count', 0),
-                'youtube_url': f"https://music.youtube.com/playlist?list={p.get('playlistId', '')}",
+                'name': snippet.get('title', ''),
+                'description': snippet.get('description', ''),
+                'image_url': thumb_url,
+                'track_count': p.get('contentDetails', {}).get('itemCount', 0),
+                'youtube_url': f"https://www.youtube.com/playlist?list={p.get('id', '')}",
             })
         return jsonify(playlists)
     except Exception as e:
-        app.logger.error(f'[YouTube Music Playlists] Exception for user {user_id}: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+        app.logger.error(f'[YouTube Playlists] Unexpected error: {str(e)}')
+        return jsonify({'error': 'Failed to fetch playlists', 'detail': str(e)}), 500
 
 
 @app.route('/api/integrations/youtube/history', methods=['GET'])
 @jwt_required()
 def youtube_history():
-    """User's YouTube Music listening history (recently played)."""
-    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
-    user = db.get_or_404(User, user_id)
-
-    ytmusic, err = _get_ytmusic_client(user)
-    if err:
-        return jsonify({'error': err}), 400
-
+    """User's recently liked/watched videos as a history proxy via YouTube Data API v3.
+    Note: YouTube Data API does not expose watch history for privacy reasons.
+    We return the user's liked videos as a reasonable substitute.
+    """
     try:
-        # Get recently played tracks
-        history = ytmusic.get_history()
-        app.logger.info(f'[YouTube Music History] Found {len(history)} tracks for user {user_id}')
-        
+        user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+        user = db.get_or_404(User, user_id)
+
+        # Fetch items from the 'Liked videos' playlist (playlistId = 'LL')
+        data, err = _youtube_api_get(user, 'playlistItems', {
+            'part': 'snippet',
+            'playlistId': 'LL',
+            'maxResults': 20,
+        })
+        if err:
+            app.logger.error(f'[YouTube History] Error for user {user_id}: {err}')
+            return jsonify({'error': err}), 400
+
+        items = (data or {}).get('items', [])
         tracks = []
-        for item in history[:20]:  # Limit to 20 most recent
+        for item in items:
+            snippet = item.get('snippet', {})
+            thumbs = snippet.get('thumbnails', {})
+            thumb = (thumbs.get('high') or thumbs.get('medium') or thumbs.get('default') or {}).get('url', '')
+            vid_id = snippet.get('resourceId', {}).get('videoId', '')
             tracks.append({
-                'title': item.get('title', ''),
-                'artist': ', '.join([a.get('name', '') for a in item.get('artists', [])]),
-                'album': item.get('album', {}).get('name', '') if item.get('album') else '',
-                'image_url': item.get('thumbnails', [{}])[-1].get('url', '') if item.get('thumbnails') else '',
-                'duration': item.get('duration_seconds', 0),
+                'title': snippet.get('title', ''),
+                'artist': snippet.get('videoOwnerChannelTitle', ''),
+                'album': '',
+                'image_url': thumb,
+                'duration': 0,
+                'youtube_url': f'https://www.youtube.com/watch?v={vid_id}' if vid_id else '',
             })
         return jsonify(tracks)
     except Exception as e:
-        app.logger.error(f'[YouTube Music History] Exception for user {user_id}: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+        app.logger.error(f'[YouTube History] Unexpected error: {str(e)}')
+        return jsonify({'error': 'Failed to fetch history', 'detail': str(e)}), 500
 
 
 @app.route('/api/integrations/youtube/liked', methods=['GET'])
 @jwt_required()
 def youtube_liked():
-    """User's liked songs from YouTube Music."""
-    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
-    user = db.get_or_404(User, user_id)
-
-    ytmusic, err = _get_ytmusic_client(user)
-    if err:
-        return jsonify({'error': err}), 400
-
+    """User's liked videos from YouTube via YouTube Data API v3."""
     try:
-        # Get liked songs
-        liked = ytmusic.get_liked_songs(limit=25)
-        tracks = liked.get('tracks', [])
-        app.logger.info(f'[YouTube Music Liked] Found {len(tracks)} liked songs for user {user_id}')
-        
+        user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+        user = db.get_or_404(User, user_id)
+
+        data, err = _youtube_api_get(user, 'playlistItems', {
+            'part': 'snippet',
+            'playlistId': 'LL',
+            'maxResults': 25,
+        })
+        if err:
+            app.logger.error(f'[YouTube Liked] Error for user {user_id}: {err}')
+            return jsonify({'error': err}), 400
+
+        items = (data or {}).get('items', [])
         songs = []
-        for item in tracks:
+        for item in items:
+            snippet = item.get('snippet', {})
+            thumbs = snippet.get('thumbnails', {})
+            thumb = (thumbs.get('high') or thumbs.get('medium') or thumbs.get('default') or {}).get('url', '')
+            vid_id = snippet.get('resourceId', {}).get('videoId', '')
             songs.append({
-                'title': item.get('title', ''),
-                'artist': ', '.join([a.get('name', '') for a in item.get('artists', [])]),
-                'album': item.get('album', {}).get('name', '') if item.get('album') else '',
-                'image_url': item.get('thumbnails', [{}])[-1].get('url', '') if item.get('thumbnails') else '',
-                'duration': item.get('duration_seconds', 0),
+                'title': snippet.get('title', ''),
+                'artist': snippet.get('videoOwnerChannelTitle', ''),
+                'album': '',
+                'image_url': thumb,
+                'duration': 0,
+                'youtube_url': f'https://www.youtube.com/watch?v={vid_id}' if vid_id else '',
             })
         return jsonify(songs)
     except Exception as e:
-        app.logger.error(f'[YouTube Music Liked] Exception for user {user_id}: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+        app.logger.error(f'[YouTube Liked] Unexpected error: {str(e)}')
+        return jsonify({'error': 'Failed to fetch liked songs', 'detail': str(e)}), 500
 
 
 @app.route('/api/integrations/youtube/disconnect', methods=['DELETE'])
