@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, redirect
+from flask import Flask, request, jsonify, redirect, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
@@ -83,6 +83,27 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
+
+# ─── Global JSON Error Handlers ───────────────────────────────────────────────
+
+@app.route('/', methods=['GET'])
+def index_health():
+    return jsonify({
+        'status': 'online',
+        'message': 'MusicShare API is running.',
+        'version': '1.1.0'
+    }), 200
+
+@app.route('/api/health', methods=['GET'])
+def api_health():
+    return jsonify({'status': 'healthy', 'timestamp': datetime.now(timezone.utc).isoformat()}), 200
+
+@app.route('/admin', methods=['GET'])
+@app.route('/admin/', methods=['GET'])
+def serve_admin():
+    """Serve the standalone admin dashboard."""
+    admin_dir = os.path.join(os.path.dirname(_BASE_DIR), 'admin')
+    return send_from_directory(admin_dir, 'index.html')
 
 # ─── Rate Limiter ──────────────────────────────────────────────────────────────
 limiter = Limiter(
@@ -211,18 +232,29 @@ def _ensure_phase0_schema():
     if 'parent_id' not in comment_cols:
         statements.append('ALTER TABLE comment ADD COLUMN parent_id INTEGER')
         
-    if not statements:
-        app.logger.info('Schema is up to date.')
-        return
+    if statements:
+        with db.engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    app.logger.info(f"Applied migration: {stmt}")
+                except Exception as e:
+                    app.logger.warning(f"Migration statement failed: {stmt} - Error: {str(e)}")
+            conn.commit()
 
-    with db.engine.connect() as conn:
-        for stmt in statements:
-            try:
-                conn.execute(text(stmt))
-                app.logger.info(f"Applied migration: {stmt}")
-            except Exception as e:
-                app.logger.warning(f"Migration statement failed: {stmt} - Error: {str(e)}")
-        conn.commit()
+    # ONE-TIME RECOVERY: Promote breidi to Admin on Render
+    try:
+        from werkzeug.security import generate_password_hash
+        target_user = User.query.filter((User.username == 'breidi') | (User.email == 'breidi@breidi.com')).first()
+        if target_user:
+            target_user.is_admin = True
+            # Set password to consistent one requested for initial entry
+            target_user.password_hash = generate_password_hash('breidibreidi1!_')
+            db.session.commit()
+            app.logger.info("RECOVERY: 'breidi' promoted and password reset.")
+    except Exception as e:
+        app.logger.warning(f"Recovery anchor failed: {str(e)}")
+
     app.logger.info('Phase-0 schema migrations completed.')
 
 
