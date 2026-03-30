@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { TouchableOpacity, View, Text, Image, Animated, Share, StyleSheet, Linking, Alert } from 'react-native';
+import { TouchableOpacity, View, Text, Animated, Share, StyleSheet, Linking, Alert } from 'react-native';
+import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { Post, PostType, ReactionType } from '../types';
@@ -87,6 +89,7 @@ export default function PostCard({
     const [sound,     setSound]     = React.useState<Audio.Sound | null>(null);
     const [isPlaying, setIsPlaying] = React.useState(false);
     const [menuVisible, setMenuVisible] = React.useState(false);
+    const likeScale = useRef(new Animated.Value(1)).current;
 
     useEffect(() => {
         return sound ? () => { sound.unloadAsync(); } : undefined;
@@ -94,6 +97,7 @@ export default function PostCard({
 
     const togglePreview = async () => {
         if (!post.preview_url) return;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         if (sound) {
             if (isPlaying) { await sound.pauseAsync(); setIsPlaying(false); }
             else           { await sound.playAsync();  setIsPlaying(true);  }
@@ -154,6 +158,7 @@ export default function PostCard({
     }, [post, isOwn, onListenLater, onQuickReact, onDelete]);
 
     const openMoreActions = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setMenuVisible(true);
     };
 
@@ -165,6 +170,19 @@ export default function PostCard({
         catch { return ''; }
     })();
     const isNowPlay = post.post_type === 'now_playing';
+
+    const handleLikePress = () => {
+        onLike(post.id);
+        if (!post.is_liked) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            Animated.sequence([
+                Animated.timing(likeScale, { toValue: 1.4, duration: 100, useNativeDriver: true }),
+                Animated.spring(likeScale, { toValue: 1, friction: 4, tension: 50, useNativeDriver: true })
+            ]).start();
+        } else {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+    };
 
     return (
         <View style={s.card}>
@@ -178,7 +196,7 @@ export default function PostCard({
                 >
                     {post.author.avatar_url ? (
                         <View style={s.avatar}>
-                            <Image source={{ uri: getAvatarUrl(post.author.avatar_url) }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                            <Image source={getAvatarUrl(post.author.avatar_url)} style={{ width: '100%', height: '100%' }} transition={200} contentFit="cover" cachePolicy="memory-disk" />
                         </View>
                     ) : (
                         <View style={[s.avatar, { backgroundColor: avatarBg, alignItems: 'center', justifyContent: 'center' }]}>
@@ -209,7 +227,7 @@ export default function PostCard({
                 style={s.artWrap}
             >
                 {post.album_art_url ? (
-                    <Image source={{ uri: post.album_art_url }} style={s.art} resizeMode="cover" />
+                    <Image source={post.album_art_url} style={s.art} transition={250} contentFit="cover" cachePolicy="memory-disk" />
                 ) : (
                     <View style={[s.art, { backgroundColor: avatarBg, alignItems: 'center', justifyContent: 'center' }]}>
                         <Ionicons name="musical-notes" size={72} color="rgba(255,255,255,0.45)" />
@@ -272,12 +290,14 @@ export default function PostCard({
 
             {/* ── Actions ────────────────────────────────────────────── */}
             <View style={s.actions}>
-                <TouchableOpacity onPress={() => onLike(post.id)} style={s.actionBtn}>
-                    <Ionicons
-                        name={post.is_liked ? 'heart' : 'heart-outline'}
-                        size={22}
-                        color={post.is_liked ? Colors.primary : '#4b5563'}
-                    />
+                <TouchableOpacity onPress={handleLikePress} style={s.actionBtn} activeOpacity={0.7}>
+                    <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+                        <Ionicons
+                            name={post.is_liked ? 'heart' : 'heart-outline'}
+                            size={22}
+                            color={post.is_liked ? Colors.primary : '#4b5563'}
+                        />
+                    </Animated.View>
                     {post.likes_count > 0 && (
                         <Text style={[s.actionCount, post.is_liked && { color: Colors.primary }]}>
                             {post.likes_count}
@@ -285,19 +305,19 @@ export default function PostCard({
                     )}
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => onComment(post)} style={s.actionBtn}>
+                <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onComment(post); }} style={s.actionBtn}>
                     <Ionicons name="chatbubble-outline" size={20} color="#4b5563" />
                     {(post.comments?.length ?? 0) > 0 && (
                         <Text style={s.actionCount}>{post.comments?.length}</Text>
                     )}
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={handleShare} style={s.actionBtn}>
+                <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handleShare(); }} style={s.actionBtn}>
                     <Ionicons name="paper-plane-outline" size={20} color="#4b5563" />
                 </TouchableOpacity>
 
                 {onSaveToCollection && (
-                    <TouchableOpacity onPress={() => onSaveToCollection(post)} style={s.actionBtn}>
+                    <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onSaveToCollection(post); }} style={s.actionBtn}>
                         <Ionicons name="albums-outline" size={20} color="#4b5563" />
                     </TouchableOpacity>
                 )}
@@ -318,9 +338,9 @@ export default function PostCard({
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
     card: {
-        marginHorizontal: 0,
-        marginBottom: Layout.space[3],
-        borderRadius: 0,
+        marginHorizontal: Layout.space[3] || 12,
+        marginBottom: Layout.space[4] || 24,
+        borderRadius: 16,
         backgroundColor: Surface.card,
         borderBottomWidth: Layout.border.hairline,
         borderBottomColor: Surface.borderStrong,
@@ -462,6 +482,9 @@ const s = StyleSheet.create({
     actionBtn: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 44,
+        minWidth: 44,
         gap: 5,
     },
     actionCount: {

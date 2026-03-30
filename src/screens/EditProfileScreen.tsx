@@ -41,6 +41,7 @@ export default function EditProfileScreen({ navigation }: any) {
         avatar_url: '',
         kawarp_config: '',
     });
+    const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
     useEffect(() => {
         const load = async () => {
@@ -160,16 +161,16 @@ export default function EditProfileScreen({ navigation }: any) {
                 <View style={{ flex: 1 }}>
                     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
                     <View style={{ alignItems: 'center', marginBottom: 28 }}>
-                        <TouchableOpacity onPress={pickAvatar} style={{ position: 'relative' }}>
+                        <TouchableOpacity onPress={pickAvatar} activeOpacity={0.8} style={{ position: 'relative' }}>
                             <View style={{ width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden' }}>
                                 <Image
                                     source={{ uri: getAvatarUrl(form.avatar_url) }}
                                     style={{ width: '100%', height: '100%' }}
                                     resizeMode="cover"
                                 />
-                            </View>
-                            <View style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: accentColor, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#0A0A0F' }}>
-                                <Ionicons name="camera" size={18} color="white" />
+                                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' }}>
+                                    <Ionicons name="camera" size={36} color="rgba(255,255,255,0.9)" />
+                                </View>
                             </View>
                         </TouchableOpacity>
                         <Text style={{ color: '#6b7280', fontSize: 13, marginTop: 10 }}>Tap to change avatar</Text>
@@ -177,9 +178,11 @@ export default function EditProfileScreen({ navigation }: any) {
 
                     <Text style={{ color: '#6b7280', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Display Name</Text>
                     <TextInput
-                        style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 18, fontWeight: '600', fontSize: 16 }}
+                        style={{ backgroundColor: focusedInput === 'name' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)', color: 'white', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, marginBottom: 18, fontWeight: '600', fontSize: 16, borderBottomWidth: 2, borderBottomColor: focusedInput === 'name' ? Colors.primary : 'transparent' }}
                         value={form.display_name}
                         onChangeText={t => setForm(prev => ({ ...prev, display_name: t }))}
+                        onFocus={() => setFocusedInput('name')}
+                        onBlur={() => setFocusedInput(null)}
                         placeholder="Your display name"
                         placeholderTextColor="#4b5563"
                         keyboardAppearance="dark"
@@ -187,9 +190,11 @@ export default function EditProfileScreen({ navigation }: any) {
 
                     <Text style={{ color: '#6b7280', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Bio</Text>
                     <TextInput
-                        style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 18, textAlignVertical: 'top', minHeight: 80 }}
+                        style={{ backgroundColor: focusedInput === 'bio' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)', color: 'white', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, marginBottom: 18, textAlignVertical: 'top', minHeight: 80, borderBottomWidth: 2, borderBottomColor: focusedInput === 'bio' ? Colors.primary : 'transparent', fontSize: 15 }}
                         value={form.bio}
                         onChangeText={t => setForm(prev => ({ ...prev, bio: t }))}
+                        onFocus={() => setFocusedInput('bio')}
+                        onBlur={() => setFocusedInput(null)}
                         multiline
                         numberOfLines={3}
                         placeholder="Tell the world about yourself..."
@@ -199,9 +204,11 @@ export default function EditProfileScreen({ navigation }: any) {
 
                     <Text style={{ color: '#6b7280', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Favorite Genres</Text>
                     <TextInput
-                        style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 18 }}
+                        style={{ backgroundColor: focusedInput === 'genres' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)', color: 'white', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, marginBottom: 18, borderBottomWidth: 2, borderBottomColor: focusedInput === 'genres' ? Colors.primary : 'transparent', fontSize: 15 }}
                         value={form.favorite_genres}
                         onChangeText={t => setForm(prev => ({ ...prev, favorite_genres: t }))}
+                        onFocus={() => setFocusedInput('genres')}
+                        onBlur={() => setFocusedInput(null)}
                         placeholder="e.g. Rock, Indie, Synthpop"
                         placeholderTextColor="#4b5563"
                         keyboardAppearance="dark"

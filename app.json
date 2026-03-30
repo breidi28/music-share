@@ -2,7 +2,7 @@
   "expo": {
     "name": "music-share",
     "slug": "music-share",
-    "version": "1.0.0",
+    "version": "1.4.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

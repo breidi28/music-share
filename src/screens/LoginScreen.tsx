@@ -21,20 +21,36 @@ export default function LoginScreen({ navigation }: any) {
     const [password, setPassword] = useState('');
     const [showPass, setShowPass] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [serverStatus, setServerStatus] = useState<'checking' | 'waking' | 'awake' | 'error'>('checking');
+    const [usernameError, setUsernameError] = useState('');
+    const [passwordError, setPasswordError] = useState('');
+    const [focusedInput, setFocusedInput] = useState<string | null>(null);
     const { login } = useAuthStore();
     const passwordRef = useRef<TextInput>(null);
 
+    const validateUsername = (val: string) => {
+        if (!val.trim()) {
+            setUsernameError('Username or email is required');
+            return false;
+        }
+        setUsernameError('');
+        return true;
+    };
+
+    const validatePassword = (val: string) => {
+        if (!val) {
+            setPasswordError('Password is required');
+            return false;
+        }
+        setPasswordError('');
+        return true;
+    };
+
     const handleLogin = async () => {
         Keyboard.dismiss();
-        if (!username || !password) {
-            Toast.show({
-                type: 'error',
-                text1: 'Missing fields',
-                text2: 'Please fill in all fields.',
-                position: 'bottom',
-                bottomOffset: 100,
-            });
+        const isUsernameValid = validateUsername(username);
+        const isPasswordValid = validatePassword(password);
+        
+        if (!isUsernameValid || !isPasswordValid) {
             return;
         }
         setLoading(true);
@@ -48,31 +64,7 @@ export default function LoginScreen({ navigation }: any) {
     };
 
     useEffect(() => {
-        let isMounted = true;
-        
-        const checkServer = async () => {
-            // Show the "waking up" banner only after 3.5s — enough to rule out
-            // normal network latency and actually indicate a cold start.
-            const slowWakeTimeout = setTimeout(() => {
-                if (isMounted) {
-                    setServerStatus('waking');
-                }
-            }, 3500);
-            
-            try {
-                // Large timeout because cold start can take 50 seconds
-                await api.get('/health', { timeout: 60000 });
-                clearTimeout(slowWakeTimeout);
-                if (isMounted) setServerStatus('awake');
-            } catch (err) {
-                clearTimeout(slowWakeTimeout);
-                if (isMounted) setServerStatus('error');
-            }
-        };
-        
-        checkServer();
-        
-        return () => { isMounted = false; };
+        // App now assumes backend is production-ready and always awake.
     }, []);
 
     return (
@@ -98,67 +90,76 @@ export default function LoginScreen({ navigation }: any) {
                         <Text className="text-gray-500 text-base">Share what moves you.</Text>
                     </View>
 
-                    {/* Server Status Banner */}
-                    {(serverStatus === 'waking' || serverStatus === 'error') && (
-                        <View className={`mb-6 p-4 rounded-xl border flex-row items-center gap-3 ${serverStatus === 'error' ? 'bg-red-900/40 border-red-500/50' : 'bg-[#FA243C]/20 border-[#FA243C]/50'}`}>
-                            {serverStatus === 'waking' ? (
-                                <ActivityIndicator color="#FA243C" size="small" />
-                            ) : (
-                                <Ionicons name="warning" size={20} color="#ef4444" />
-                            )}
-                            <View style={{ flex: 1 }}>
-                                <Text className="text-white font-medium text-sm">
-                                    {serverStatus === 'waking' ? 'Waking up the server' : 'Server sleeping/down'}
-                                </Text>
-                                <Text className="text-gray-400 text-xs mt-1">
-                                    {serverStatus === 'waking' 
-                                        ? 'Since this is a free deployment, it may take up to 50 seconds to spin back up.' 
-                                        : 'Failed to reach the backend. Please try again later.'}
-                                </Text>
-                            </View>
-                        </View>
-                    )}
+
 
                     {/* Form */}
                     <View className="flex-col gap-6">
                         <View className="flex-col gap-4">
                             {/* Username input */}
-                            <View className="flex-row items-center border border-gray-700 rounded-xl h-14 bg-neutral-900 px-4">
-                                <Ionicons name="person-outline" size={20} color={Colors.textSecondary} />
-                                <TextInput
-                                    style={{ flex: 1, color: 'white', fontSize: 16, paddingLeft: 12, height: '100%' }}
-                                    placeholderTextColor="#6b7280"
-                                    placeholder="Username or email"
-                                    value={username}
-                                    onChangeText={setUsername}
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                    keyboardType="email-address"
-                                    returnKeyType="next"
-                                    onSubmitEditing={() => passwordRef.current?.focus()}
-                                    blurOnSubmit={false}
-                                    keyboardAppearance="dark"
-                                />
+                            <View>
+                                <View style={{ 
+                                    flexDirection: 'row', 
+                                    alignItems: 'center', 
+                                    backgroundColor: focusedInput === 'username' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+                                    borderRadius: 12, 
+                                    height: 56, 
+                                    paddingHorizontal: 16,
+                                    borderBottomWidth: 2,
+                                    borderBottomColor: usernameError ? '#FA243C' : (focusedInput === 'username' ? Colors.primary : 'transparent')
+                                }}>
+                                    <Ionicons name="person" size={20} color={usernameError ? '#FA243C' : (focusedInput === 'username' ? Colors.primary : '#6b7280')} />
+                                    <TextInput
+                                        style={{ flex: 1, color: 'white', fontSize: 16, paddingLeft: 12, height: '100%', fontWeight: '600' }}
+                                        placeholderTextColor="#6b7280"
+                                        placeholder="Username or email"
+                                        value={username}
+                                        onChangeText={val => { setUsername(val); if (usernameError) validateUsername(val); }}
+                                        onFocus={() => setFocusedInput('username')}
+                                        onBlur={() => { setFocusedInput(null); validateUsername(username); }}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                        keyboardType="email-address"
+                                        returnKeyType="next"
+                                        onSubmitEditing={() => passwordRef.current?.focus()}
+                                        blurOnSubmit={false}
+                                        keyboardAppearance="dark"
+                                    />
+                                </View>
+                                {usernameError ? <Text className="text-[#FA243C] text-xs mt-1 ml-1">{usernameError}</Text> : null}
                             </View>
 
                             {/* Password input */}
-                            <View className="flex-row items-center border border-gray-700 rounded-xl h-14 bg-neutral-900 px-4">
-                                <Ionicons name="lock-closed-outline" size={20} color={Colors.textSecondary} />
-                                <TextInput
-                                    ref={passwordRef}
-                                    style={{ flex: 1, color: 'white', fontSize: 16, paddingLeft: 12, height: '100%' }}
-                                    placeholderTextColor="#6b7280"
-                                    placeholder="Password"
-                                    secureTextEntry={!showPass}
-                                    value={password}
-                                    onChangeText={setPassword}
-                                    returnKeyType="done"
-                                    onSubmitEditing={handleLogin}
-                                    keyboardAppearance="dark"
-                                />
-                                <TouchableOpacity className="p-2" onPress={() => setShowPass(!showPass)}>
-                                    <Ionicons name={showPass ? 'eye-off' : 'eye'} size={20} color={Colors.textSecondary} />
-                                </TouchableOpacity>
+                            <View>
+                                <View style={{ 
+                                    flexDirection: 'row', 
+                                    alignItems: 'center', 
+                                    backgroundColor: focusedInput === 'password' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+                                    borderRadius: 12, 
+                                    height: 56, 
+                                    paddingHorizontal: 16,
+                                    borderBottomWidth: 2,
+                                    borderBottomColor: passwordError ? '#FA243C' : (focusedInput === 'password' ? Colors.primary : 'transparent')
+                                }}>
+                                    <Ionicons name="lock-closed" size={20} color={passwordError ? '#FA243C' : (focusedInput === 'password' ? Colors.primary : '#6b7280')} />
+                                    <TextInput
+                                        ref={passwordRef}
+                                        style={{ flex: 1, color: 'white', fontSize: 16, paddingLeft: 12, height: '100%', fontWeight: '600' }}
+                                        placeholderTextColor="#6b7280"
+                                        placeholder="Password"
+                                        secureTextEntry={!showPass}
+                                        value={password}
+                                        onChangeText={val => { setPassword(val); if (passwordError) validatePassword(val); }}
+                                        onFocus={() => setFocusedInput('password')}
+                                        onBlur={() => { setFocusedInput(null); validatePassword(password); }}
+                                        returnKeyType="done"
+                                        onSubmitEditing={handleLogin}
+                                        keyboardAppearance="dark"
+                                    />
+                                    <TouchableOpacity className="p-2" onPress={() => setShowPass(!showPass)}>
+                                        <Ionicons name={showPass ? 'eye-off' : 'eye'} size={20} color={passwordError ? '#FA243C' : '#6b7280'} />
+                                    </TouchableOpacity>
+                                </View>
+                                {passwordError ? <Text className="text-[#FA243C] text-xs mt-1 ml-1">{passwordError}</Text> : null}
                             </View>
 
                             <TouchableOpacity 
@@ -189,20 +190,6 @@ export default function LoginScreen({ navigation }: any) {
                             }
                         </TouchableOpacity>
 
-                        {/* Demo Box */}
-                        <View className="border border-gray-800 bg-neutral-900 rounded-xl p-4">
-                            <View className="items-center flex-col gap-2">
-                                <Text className="text-gray-500 text-xs">Demo accounts</Text>
-                                <View className="flex-row justify-center gap-4">
-                                    {['alex_m', 'soundjunkie', 'vinyl_vibes'].map(u => (
-                                        <TouchableOpacity key={u} onPress={() => { setUsername(u); setPassword('password123'); }}>
-                                            <Text className="text-[#FA243C] font-medium text-sm">@{u}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                                <Text className="text-gray-400 text-xs mt-1">password: password123</Text>
-                            </View>
-                        </View>
 
                         {/* Sign Up Link */}
                         <View className="flex-row justify-center gap-2">

@@ -43,3 +43,9 @@ yarn-error.*
 # Backup files — never commit these to source control
 *.bak
 *.bak.*
+
+# agent skills
+.agent
+
+# venv
+.venv/

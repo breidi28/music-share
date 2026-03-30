@@ -9,11 +9,40 @@ const GENRES = ['Pop', 'Rock', 'Hip-Hop', 'Jazz', 'Electronic', 'Classical', 'R&
 
 export default function RegisterScreen({ navigation }: any) {
     const [form, setForm] = useState({ username: '', email: '', password: '', display_name: '', bio: '' });
+    const [errors, setErrors] = useState({ username: '', email: '', password: '', display_name: '' });
+    const [touched, setTouched] = useState({ username: false, email: false, password: false, display_name: false, bio: false });
+    const [focusedInput, setFocusedInput] = useState<string | null>(null);
     const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const { register } = useAuthStore();
 
-    const update = (key: string) => (val: string) => setForm(f => ({ ...f, [key]: val }));
+    const validateField = (key: string, val: string) => {
+        let error = '';
+        if (key === 'email' && val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+            error = 'Please enter a valid email address';
+        } else if (key === 'password' && val && val.length < 6) {
+            error = 'Password must be at least 6 characters';
+        } else if (key === 'username' && val && !/^[a-zA-Z0-9_]+$/.test(val)) {
+            error = 'Username can only contain letters, numbers, and underscores';
+        } else if (key !== 'bio' && touched[key as keyof typeof touched] && !val) {
+            error = 'This field is required';
+        }
+        setErrors(prev => ({ ...prev, [key]: error }));
+        return !error && val;
+    };
+
+    const update = (key: string) => (val: string) => {
+        setForm(f => ({ ...f, [key]: val }));
+        if (touched[key as keyof typeof touched]) {
+            validateField(key, val);
+        }
+    };
+
+    const handleBlur = (key: string) => () => {
+        setFocusedInput(null);
+        setTouched(prev => ({ ...prev, [key]: true }));
+        validateField(key, form[key as keyof typeof form]);
+    };
 
     const toggleGenre = (g: string) => {
         setSelectedGenres(prev =>
@@ -22,11 +51,19 @@ export default function RegisterScreen({ navigation }: any) {
     };
 
     const handleRegister = async () => {
-        if (!form.username || !form.email || !form.password || !form.display_name) {
+        // Mark all as touched
+        setTouched({ username: true, email: true, password: true, display_name: true, bio: true });
+        
+        const isEmailValid = validateField('email', form.email);
+        const isUsernameValid = validateField('username', form.username);
+        const isPasswordValid = validateField('password', form.password);
+        const isDisplayNameValid = validateField('display_name', form.display_name);
+
+        if (!isEmailValid || !isUsernameValid || !isPasswordValid || !isDisplayNameValid) {
             Toast.show({
                 type: 'error',
-                text1: 'Missing fields',
-                text2: 'Please fill in all required fields.',
+                text1: 'Validation Error',
+                text2: 'Please fix the errors in the form before continuing.',
                 position: 'bottom',
                 bottomOffset: 100,
             });
@@ -70,24 +107,42 @@ export default function RegisterScreen({ navigation }: any) {
                             { key: 'email', placeholder: 'Email', icon: 'mail', keyboardType: 'email-address' },
                             { key: 'password', placeholder: 'Password', icon: 'lock-closed', secure: true },
                             { key: 'bio', placeholder: 'Bio (optional)', icon: 'chatbubble-ellipses' },
-                        ].map(f => (
-                            <View key={f.key} className="flex-row items-center border border-gray-700 rounded-lg h-14 bg-neutral-900 px-3">
-                                <View className="pl-3 justify-center items-center">
-                                    <Ionicons name={f.icon as any} size={20} color={Colors.textSecondary} />
+                        ].map(f => {
+                            const hasError = touched[f.key as keyof typeof touched] && errors[f.key as keyof typeof errors];
+                            const isFocused = focusedInput === f.key;
+                            return (
+                                <View key={f.key} className="mb-2">
+                                    <View style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        backgroundColor: isFocused ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+                                        borderRadius: 12,
+                                        height: 56,
+                                        paddingHorizontal: 16,
+                                        borderBottomWidth: 2,
+                                        borderBottomColor: hasError ? '#FA243C' : (isFocused ? Colors.primary : 'transparent')
+                                    }}>
+                                        <Ionicons name={f.icon as any} size={20} color={hasError ? '#FA243C' : (isFocused ? Colors.primary : '#6b7280')} />
+                                        <TextInput
+                                            style={{ flex: 1, color: 'white', fontSize: 16, paddingLeft: 12, height: '100%', fontWeight: '600' }}
+                                            placeholderTextColor="#6b7280"
+                                            placeholder={f.placeholder}
+                                            value={(form as any)[f.key]}
+                                            onChangeText={update(f.key)}
+                                            onFocus={() => setFocusedInput(f.key)}
+                                            onBlur={handleBlur(f.key)}
+                                            secureTextEntry={f.secure}
+                                            autoCapitalize="none"
+                                            keyboardType={(f as any).keyboardType}
+                                            keyboardAppearance="dark"
+                                        />
+                                    </View>
+                                    {hasError ? (
+                                        <Text className="text-[#FA243C] text-xs mt-1 ml-1">{errors[f.key as keyof typeof errors]}</Text>
+                                    ) : null}
                                 </View>
-                                <TextInput
-                                    className="flex-1 text-white text-base pl-3 h-full"
-                                    placeholderTextColor="#6b7280"
-                                    placeholder={f.placeholder}
-                                    value={(form as any)[f.key]}
-                                    onChangeText={update(f.key)}
-                                    secureTextEntry={f.secure}
-                                    autoCapitalize="none"
-                                    keyboardType={(f as any).keyboardType}
-                                    keyboardAppearance="dark"
-                                />
-                            </View>
-                        ))}
+                            );
+                        })}
 
                         {/* Genres */}
                         <Text className="text-sm font-semibold text-gray-400 mt-2">

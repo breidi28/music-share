@@ -14,6 +14,24 @@ type ChangelogEntry = {
 
 const CHANGELOG: ChangelogEntry[] = [
     {
+        version: '1.4.0',
+        date: '2026-03-30',
+        highlights: [
+            'Major UI Redesign: Implemented an Apple Music-inspired aesthetic with immersive dark modes and vibrant frosted glass.',
+            'Native Navigation: Added true frosted-glass BlurViews to the bottom tabs and app headers.',
+            'Authentication Overhaul: Redesigned the Login and Registration flow with dynamic, translucent focus states.',
+            'Performance Leap: Integrated expo-image for buttery smooth, disk-cached scrolling on the Feed and Collection.',
+            'Tactile Engine: Added subtle iOS-like haptic feedback (expo-haptics) across all major app interactions.',
+            'Skeleton Loaders: Replaced generic loading spinners with animated post skeletons.',
+            'Empty States: Transformed all empty states (Search, Notifications, Listen Later) with beautiful bold iconography.'
+        ],
+        fixes: [
+            'Fixed accessibility contrast ratios across buttons and action items.',
+            'Removed debug development artifacts and dummy test accounts from production builds.',
+            'Resolved input layout jumping and keyboard overlap in the auth flow.'
+        ],
+    },
+    {
         version: '1.3.0',
         date: '2026-03-15',
         highlights: [

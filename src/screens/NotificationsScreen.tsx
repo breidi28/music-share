@@ -113,9 +113,12 @@ export default function NotificationsScreen({ navigation }: any) {
                     contentContainerStyle={{ paddingTop: insets.top + 60, paddingBottom: 100 }}
                     renderItem={renderItem}
                     ListEmptyComponent={
-                        <View className="p-8 mt-10 justify-center items-center">
-                            <Ionicons name="notifications-off-outline" size={64} color={Colors.textMuted} />
-                            <Text className="text-gray-500 text-lg mt-4 text-center">No notifications yet.</Text>
+                        <View className="flex-1 justify-center items-center mt-32 px-10">
+                            <View className="w-24 h-24 rounded-full bg-purple-500/20 mb-6 justify-center items-center">
+                                <Ionicons name="notifications" size={40} color="#A855F7" />
+                            </View>
+                            <Text className="text-white font-bold text-xl text-center mb-2">You're all caught up</Text>
+                            <Text className="text-gray-400 text-center text-sm">When your friends interact with your collection or follow you, you'll see it here.</Text>
                         </View>
                     }
                 />

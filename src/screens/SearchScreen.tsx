@@ -152,13 +152,20 @@ export default function SearchScreen({ navigation }: any) {
                     contentContainerStyle={{ paddingTop: insets.top + 70, paddingBottom: 100, paddingHorizontal: 16 }}
                     ListEmptyComponent={
                         query ? (
-                            <View className="justify-center items-center p-12">
-                                <Text className="text-gray-500 text-center text-lg">No users found for "{query}"</Text>
+                            <View className="flex-1 justify-center items-center mt-32 px-8">
+                                <View className="w-24 h-24 rounded-full bg-blue-500/20 mb-6 justify-center items-center">
+                                    <Ionicons name="search" size={40} color="#3B82F6" />
+                                </View>
+                                <Text className="text-white font-bold text-xl text-center mb-2">No results found</Text>
+                                <Text className="text-gray-400 text-center text-sm">We couldn't find anyone matching "{query}". Try searching for a different name or username.</Text>
                             </View>
                         ) : (
-                            <View className="justify-center items-center p-16 gap-4 opacity-50">
-                                <Ionicons name="people-outline" size={64} color={Colors.textSecondary} />
-                                <Text className="text-gray-500 text-center text-lg">Search for friends by username or name</Text>
+                            <View className="flex-1 justify-center items-center mt-32 px-8">
+                                <View className="w-24 h-24 rounded-full bg-pink-500/20 mb-6 justify-center items-center">
+                                    <Ionicons name="people" size={40} color="#EC4899" />
+                                </View>
+                                <Text className="text-white font-bold text-xl text-center mb-2">Find Friends</Text>
+                                <Text className="text-gray-400 text-center text-sm">Search for other music lovers by their username or real name to start following their crates.</Text>
                             </View>
                         )
                     }

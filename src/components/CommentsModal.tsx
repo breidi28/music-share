@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { FlatList, Platform, KeyboardAvoidingView, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import Modal from 'react-native-modal';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { Post, Comment, User } from '../types';
 import { API_BASE_URL } from '../api/client';
@@ -212,6 +213,12 @@ export default function CommentsModal({ post, visible, onClose }: Props) {
             onBackdropPress={onClose}
             onSwipeComplete={onClose}
             swipeDirection="down"
+            animationIn="slideInUp"
+            animationOut="slideOutDown"
+            animationInTiming={300}
+            animationOutTiming={250}
+            backdropTransitionOutTiming={0}
+            useNativeDriverForBackdrop={true}
             style={{ margin: 0, justifyContent: 'flex-end' }}
             avoidKeyboard
         >
@@ -219,7 +226,21 @@ export default function CommentsModal({ post, visible, onClose }: Props) {
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={{ flex: 1, justifyContent: 'flex-end' }}
             >
-                <View style={{ backgroundColor: '#0A0A0F', borderTopLeftRadius: 28, borderTopRightRadius: 28, minHeight: 300, maxHeight: '85%', paddingBottom: 8, flexDirection: 'column', borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                <BlurView 
+                    intensity={90} 
+                    tint="dark" 
+                    style={{ 
+                        borderTopLeftRadius: 28, 
+                        borderTopRightRadius: 28, 
+                        minHeight: 300, 
+                        maxHeight: '85%', 
+                        paddingBottom: 8, 
+                        flexDirection: 'column', 
+                        borderTopWidth: 1, 
+                        borderColor: 'rgba(255,255,255,0.08)',
+                        overflow: 'hidden'
+                    }}
+                >
                     <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.15)', marginTop: 12, marginBottom: 4, alignSelf: 'center' }} />
                     <Text className="font-bold text-xl text-center text-white py-3 border-b border-white/5">
                         Comments
@@ -299,7 +320,7 @@ export default function CommentsModal({ post, visible, onClose }: Props) {
                             )}
                         </TouchableOpacity>
                     </View>
-                </View>
+                </BlurView>
             </KeyboardAvoidingView>
         </Modal>
     );

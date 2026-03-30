@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, FlatList, TouchableOpacity, Image, RefreshControl, ActivityIndicator, Modal, TextInput, Alert, ScrollView, Platform, StyleSheet, Text, KeyboardAvoidingView } from 'react-native';
+import { View, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal, TextInput, Alert, ScrollView, Platform, StyleSheet, Text, KeyboardAvoidingView } from 'react-native';
+import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
@@ -34,7 +36,7 @@ const VinylMedia = React.memo(({ art }: { art?: string }) => (
             <View style={{ width: 74, height: 74, borderRadius: 37, borderWidth: 1, borderColor: '#202020', alignItems: 'center', justifyContent: 'center' }}>
                 <View style={{ width: 58, height: 58, borderRadius: 29, overflow: 'hidden', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
                     {art ? (
-                        <Image source={{ uri: art }} style={{ width: '100%', height: '100%' }} />
+                        <Image source={art} style={{ width: '100%', height: '100%' }} transition={200} contentFit="cover" cachePolicy="memory-disk" />
                     ) : (
                         <FontAwesome5 name="record-vinyl" size={20} color="#4b5563" />
                     )}
@@ -95,7 +97,7 @@ const CDMedia = React.memo(({ art }: { art?: string }) => (
                         zIndex: 2
                     }}>
                         {art ? (
-                            <Image source={{ uri: art }} style={{ width: '100%', height: '100%', opacity: 0.95 }} />
+                            <Image source={art} style={{ width: '100%', height: '100%', opacity: 0.95 }} transition={200} contentFit="cover" cachePolicy="memory-disk" />
                         ) : (
                             <View style={{ flex: 1, backgroundColor: '#1f2937', justifyContent: 'center', alignItems: 'center' }}>
                                 <FontAwesome5 name="compact-disc" size={24} color="#4b5563" />
@@ -147,7 +149,7 @@ const CassetteMedia = React.memo(({ art }: { art?: string }) => (
             </View>
             <View style={{ position: 'absolute', left: 10, right: 10, top: 8, height: 12, borderRadius: 4, overflow: 'hidden', backgroundColor: '#374151' }}>
                 {art ? (
-                    <Image source={{ uri: art }} style={{ width: '100%', height: '100%', opacity: 0.65 }} />
+                    <Image source={art} style={{ width: '100%', height: '100%', opacity: 0.65 }} transition={200} contentFit="cover" cachePolicy="memory-disk" />
                 ) : null}
             </View>
         </View>
@@ -157,7 +159,7 @@ const CassetteMedia = React.memo(({ art }: { art?: string }) => (
 const DigitalMedia = React.memo(({ art }: { art?: string }) => (
     <View style={{ width: 96, height: 96, borderRadius: 12, backgroundColor: '#111827', borderWidth: 1, borderColor: '#374151', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         {art ? (
-            <Image source={{ uri: art }} style={{ width: '100%', height: '100%' }} />
+            <Image source={art} style={{ width: '100%', height: '100%' }} transition={200} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
             <Ionicons name="musical-notes" size={24} color="#6b7280" />
         )}
@@ -187,7 +189,10 @@ const CollectionItemRow = React.memo(({
             if (art) {
                 return (
                     <Image
-                        source={{ uri: art }}
+                        source={art}
+                        transition={200}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
                         style={{
                             width: isGrid ? '100%' : 80,
                             aspectRatio: 1,
@@ -226,7 +231,10 @@ const CollectionItemRow = React.memo(({
 
     return (
         <TouchableOpacity
-            onPress={isMyCollection ? () => onEdit(item) : undefined}
+            onPress={isMyCollection ? () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onEdit(item);
+            } : undefined}
             activeOpacity={isMyCollection ? 0.2 : 1}
             style={{
                 flex: isGrid || isShelf ? 1 : undefined,
@@ -289,7 +297,7 @@ const CollectionItemRow = React.memo(({
             </View>
 
             {isMyCollection && !isGrid && !isShelf && (
-                <TouchableOpacity onPress={() => onSpin(item)} style={{ padding: 16 }}>
+                <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onSpin(item); }} style={{ padding: 16 }}>
                     <FontAwesome5 name="compact-disc" size={24} color="#10B981" />
                 </TouchableOpacity>
             )}
@@ -559,6 +567,7 @@ export default function CollectionScreen({ navigation, route }: any) {
     };
 
     const handleRemove = (item: CollectionItem) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         Alert.alert('Remove Item', `Remove "${item.album_title}" from your collection?`, [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -584,12 +593,14 @@ export default function CollectionScreen({ navigation, route }: any) {
                 return;
             }
         }
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setScannerVisible(true);
         setScanned(false);
     };
 
     const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
         if (scanned) return;
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setScanned(true);
         setScannerVisible(false);
         
@@ -741,7 +752,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                         </View>
                         {isMyCollection && (
                             <TouchableOpacity
-                                onPress={() => setAddModalVisible(true)}
+                                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAddModalVisible(true); }}
                                 style={{
                                     backgroundColor: Colors.primary,
                                     borderRadius: 20,
@@ -907,7 +918,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                                                     <View key={`${album.track_id}-${idx}`} style={{ width: 126 }}>
                                                         <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
                                                             {album.album_art_url ? (
-                                                                <Image source={{ uri: album.album_art_url }} style={{ width: '100%', aspectRatio: 1 }} />
+                                                                <Image source={album.album_art_url} style={{ width: '100%', aspectRatio: 1 }} transition={150} contentFit="cover" cachePolicy="memory-disk" />
                                                             ) : (
                                                                 <View style={{ width: '100%', aspectRatio: 1, backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
                                                                     <FontAwesome5 name="music" size={20} color="#4b5563" />
@@ -950,14 +961,32 @@ export default function CollectionScreen({ navigation, route }: any) {
                         </View>
                     ) : (
                         <View style={{ paddingVertical: 60, alignItems: "center", paddingHorizontal: 40 }}>
-                            <FontAwesome5 name="record-vinyl" size={64} color="#374151" />
-                            <Text style={{ color: "#6b7280", fontSize: 16, marginTop: 16, textAlign: "center" }}>
-                                {isMyCollection ? "No matches in this shelf yet" : "This collection is empty"}
+                            <FontAwesome5 name="record-vinyl" size={64} color={Colors.primary} style={{ opacity: 0.8 }} />
+                            <Text style={{ color: "white", fontSize: 18, fontWeight: '700', marginTop: 24, textAlign: "center" }}>
+                                {isMyCollection ? "Your collection is empty" : "This collection is empty"}
                             </Text>
                             {isMyCollection && (
-                                <Text style={{ color: "#4b5563", fontSize: 13, marginTop: 8, textAlign: "center" }}>
-                                    {items.length ? "Try another smart shelf or media filter" : "Tap + to add your first album"}
-                                </Text>
+                                <>
+                                    <Text style={{ color: "#9ca3af", fontSize: 14, marginTop: 8, textAlign: "center", marginBottom: 24, lineHeight: 20 }}>
+                                        {items.length ? "Try another smart shelf or media filter to find what you're looking for." : "Start building your digital record crate. Add vinyls, CDs, or digital albums to your collection."}
+                                    </Text>
+                                    {!items.length && (
+                                        <TouchableOpacity
+                                            onPress={() => setAddModalVisible(true)}
+                                            style={{
+                                                backgroundColor: Colors.primary,
+                                                borderRadius: 24,
+                                                paddingHorizontal: 24,
+                                                paddingVertical: 12,
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <Ionicons name="add" size={20} color="white" />
+                                            <Text style={{ color: 'white', fontWeight: '700', fontSize: 15, marginLeft: 6 }}>Add First Album</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </>
                             )}
                         </View>
                     )
@@ -1113,7 +1142,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                                     }}
                                 >
                                     {result.album_art_url ? (
-                                        <Image source={{ uri: result.album_art_url }} style={{ width: 60, height: 60, borderRadius: 8 }} />
+                                        <Image source={result.album_art_url} style={{ width: 60, height: 60, borderRadius: 8 }} transition={150} contentFit="cover" cachePolicy="memory-disk" />
                                     ) : (
                                         <View style={{ width: 60, height: 60, borderRadius: 8, backgroundColor: '#1f2937', justifyContent: 'center', alignItems: 'center' }}>
                                             <FontAwesome5 name="music" size={20} color="#4b5563" />
@@ -1166,7 +1195,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                                 {/* Album Info Header */}
                                 <View style={{ alignItems: 'center', marginBottom: 32 }}>
                                     {editingItem.album_art_url ? (
-                                        <Image source={{ uri: editingItem.album_art_url }} style={{ width: 140, height: 140, borderRadius: 12 }} />
+                                        <Image source={editingItem.album_art_url} style={{ width: 140, height: 140, borderRadius: 12 }} transition={200} contentFit="cover" cachePolicy="memory-disk" />
                                     ) : (
                                         <View style={{ width: 140, height: 140, borderRadius: 12, backgroundColor: '#1f2937', justifyContent: 'center', alignItems: 'center' }}>
                                             <FontAwesome5 name="music" size={40} color="#4b5563" />

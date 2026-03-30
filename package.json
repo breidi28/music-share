@@ -1,6 +1,6 @@
 {
   "name": "music-share",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -30,6 +30,8 @@
     "expo-blur": "~15.0.8",
     "expo-camera": "~17.0.10",
     "expo-crypto": "~15.0.8",
+    "expo-haptics": "~15.0.8",
+    "expo-image": "~3.0.11",
     "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "~15.0.8",
     "expo-random": "^14.0.1",

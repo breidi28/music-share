@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, TouchableWithoutFeedback, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TouchableWithoutFeedback, Platform } from 'react-native';
+import Modal from 'react-native-modal';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme';
 import { Layout, Surface } from '../../theme/layout';
@@ -21,21 +22,23 @@ interface MenuModalProps {
 export function MenuModal({ visible, title, options, onClose }: MenuModalProps) {
     return (
         <Modal
-            visible={visible}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={onClose}
+            isVisible={visible}
+            onBackdropPress={onClose}
+            onSwipeComplete={onClose}
+            swipeDirection="down"
+            animationIn="slideInUp"
+            animationOut="slideOutDown"
+            animationInTiming={300}
+            animationOutTiming={250}
+            backdropTransitionOutTiming={0}
+            useNativeDriverForBackdrop={true}
+            style={s.modalWrapper}
         >
-            <TouchableOpacity 
-                style={s.overlay} 
-                activeOpacity={1} 
-                onPress={onClose}
-            >
-                <TouchableWithoutFeedback>
-                    <View style={s.modalContainer}>
-                        <View style={s.header}>
-                            <Text style={s.title}>{title}</Text>
-                        </View>
+            <View style={s.modalContainer}>
+                <View style={s.header}>
+                    <View style={s.dragIndicator} />
+                    <Text style={s.title}>{title}</Text>
+                </View>
                         
                         <View style={s.optionsContainer}>
                             {options.map((opt, idx) => {
@@ -71,26 +74,21 @@ export function MenuModal({ visible, title, options, onClose }: MenuModalProps) 
                                 );
                             })}
                         </View>
-                    </View>
-                </TouchableWithoutFeedback>
-            </TouchableOpacity>
+            </View>
         </Modal>
     );
 }
 
 const s = StyleSheet.create({
-    overlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
+    modalWrapper: {
+        justifyContent: 'flex-end',
+        margin: 0,
     },
     modalContainer: {
         width: '100%',
-        maxWidth: 380,
         backgroundColor: '#1c1c1e',
-        borderRadius: 16,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
         overflow: 'hidden',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
@@ -106,6 +104,14 @@ const s = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(255,255,255,0.05)',
         alignItems: 'center',
+    },
+    dragIndicator: {
+        width: 36,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        marginBottom: 12,
+        alignSelf: 'center',
     },
     title: {
         color: '#d1d5db',

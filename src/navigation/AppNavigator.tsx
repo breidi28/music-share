@@ -4,6 +4,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { StyleSheet } from 'react-native';
 import { enableScreens } from 'react-native-screens';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -51,26 +53,38 @@ function TabNavigator() {
                 headerShown: false,
                 tabBarShowLabel: true,
                 // Use native iOS tab bar styling
+                // Use native iOS tab bar styling with frosted glass
+                tabBarBackground: () => (
+                    <BlurView
+                        tint="dark"
+                        intensity={95}
+                        style={StyleSheet.absoluteFill}
+                    />
+                ),
                 tabBarStyle: Platform.OS === 'ios' ? {
-                    backgroundColor: 'rgba(28, 28, 30, 0.72)', // iOS-style translucent dark
-                    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-                    borderTopWidth: 0.5,
+                    position: 'absolute',
+                    backgroundColor: 'transparent', // The BlurView handles the background
+                    borderTopColor: 'rgba(255, 255, 255, 0.15)',
+                    borderTopWidth: StyleSheet.hairlineWidth,
                     height: tabBarHeight,
-                    paddingBottom: Math.max(insets.bottom, 8), // Use safe area bottom or minimum 8
+                    paddingBottom: Math.max(insets.bottom, 8),
                     paddingTop: 8,
+                    elevation: 0,
                 } : {
-                    backgroundColor: '#1a1a1a',
+                    position: 'absolute',
+                    backgroundColor: 'rgba(28, 28, 30, 0.85)',
                     borderTopColor: 'rgba(255, 255, 255, 0.1)',
                     borderTopWidth: 1,
                     height: tabBarHeight,
-                    paddingBottom: Math.max(insets.bottom, 10), // Use safe area bottom or minimum 10
+                    paddingBottom: Math.max(insets.bottom, 10),
                     paddingTop: 8,
+                    elevation: 0,
                 },
                 tabBarActiveTintColor: Colors.primary, // Apple Music Pink/Red active tint
                 tabBarInactiveTintColor: '#9ca3af', // gray-400
                 tabBarLabelStyle: {
-                    fontSize: 10,
-                    fontWeight: '500',
+                    fontSize: 11,
+                    fontWeight: '600',
                     marginTop: -2,
                     marginBottom: Platform.OS === 'ios' ? 0 : 4,
                 },

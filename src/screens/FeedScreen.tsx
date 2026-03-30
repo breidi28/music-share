@@ -12,6 +12,7 @@ import { HIG } from '../theme/hig';
 import PostCard from '../components/PostCard';
 import CommentsModal from '../components/CommentsModal';
 import { MenuModal } from '../components/ui/MenuModal';
+import { SkeletonPostCard } from '../components/ui/SkeletonPostCard';
 
 export default function FeedScreen({ navigation }: any) {
     const [posts, setPosts] = useState<Post[]>([]);
@@ -166,7 +167,7 @@ export default function FeedScreen({ navigation }: any) {
             }}
         >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-                <Text style={{ fontSize: 34, fontWeight: '700', color: 'white', letterSpacing: -0.5 }}>tuneshare</Text>
+                <Text style={{ fontSize: 34, fontWeight: '800', color: 'white', letterSpacing: -1, lineHeight: 40 }}>tuneshare</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     <TouchableOpacity onPress={openHeaderMenu} style={{ minWidth: HIG.touchTargetMin, minHeight: HIG.touchTargetMin, alignItems: 'center', justifyContent: 'center' }}>
                         <Ionicons name="menu" size={24} color="#9ca3af" />
@@ -186,8 +187,10 @@ export default function FeedScreen({ navigation }: any) {
         return (
             <View style={{ flex: 1, backgroundColor: '#000' }}>
                 {renderHeader()}
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <ActivityIndicator size="large" color={Colors.primary} />
+                <View style={{ flex: 1 }}>
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <SkeletonPostCard key={i} />
+                    ))}
                 </View>
             </View>
         );
@@ -199,6 +202,10 @@ export default function FeedScreen({ navigation }: any) {
             <FlatList
                 data={posts}
                 keyExtractor={p => String(p.id)}
+                initialNumToRender={5}
+                maxToRenderPerBatch={5}
+                windowSize={5}
+                removeClippedSubviews={true}
                 ListHeaderComponent={
                     <View style={{ paddingTop: 12 }}>
                         {activityHighlights && (activityHighlights.mostActive || activityHighlights.newestPost) ? (

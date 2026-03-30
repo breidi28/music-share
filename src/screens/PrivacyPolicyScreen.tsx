@@ -30,7 +30,7 @@ export default function PrivacyPolicyScreen({ navigation }: any) {
             {/* Content */}
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
                 <Text style={{ color: '#9ca3af', fontSize: 14, marginBottom: 20 }}>
-                    Last Updated: March 2026
+                    Last Updated: March 30, 2026
                 </Text>
 
                 <Section title="Introduction">

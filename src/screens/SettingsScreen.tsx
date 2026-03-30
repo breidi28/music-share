@@ -29,6 +29,7 @@ import { Colors } from '../theme';
 import { HIG } from '../theme/hig';
 import { UtilityScreen } from '../theme/utilityScreen';
 import { spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, usersApi, notificationsApi } from '../api/endpoints';
+import api from '../api/client';
 import { User } from '../types';
 
 // Complete auth session when returning from OAuth browser
@@ -217,25 +218,42 @@ export default function SettingsScreen({ navigation }: any) {
 
     /**
      * Handle YouTube Music Connection Plan
-     * Manually construct URL to 'forget expo' and use direct Render redirect
+     * Fetches a signed state token from the backend then opens Google OAuth.
+     * The state token is HMAC-signed so the callback can validate it (CSRF protection).
      */
     const handleConnectYouTube = async () => {
         if (!user?.id) return;
         setLoadingServices(true);
         try {
-            const scope = 'https://www.googleapis.com/auth/youtube';
-            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_WEB_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(YOUTUBE_REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&state=${user.id}&access_type=offline&prompt=consent`;
+            // Get a server-signed state token — this is what the backend validates on callback
+            const stateRes = await api.get('/auth/oauth-state');
+            const signedState = stateRes.data.state;
+
+            const scope = [
+                'https://www.googleapis.com/auth/youtube',
+                'https://www.googleapis.com/auth/youtube.readonly',
+            ].join(' ');
+            const authUrl = [
+                'https://accounts.google.com/o/oauth2/v2/auth',
+                `?client_id=${GOOGLE_WEB_CLIENT_ID}`,
+                `&response_type=code`,
+                `&redirect_uri=${encodeURIComponent(YOUTUBE_REDIRECT_URI)}`,
+                `&scope=${encodeURIComponent(scope)}`,
+                `&state=${encodeURIComponent(signedState)}`,
+                `&access_type=offline`,
+                `&prompt=consent`,
+            ].join('');
 
             const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
-            
+
             if (result.type === 'success') {
+                // Backend handled the callback and stored tokens — refresh profile
                 const res = await usersApi.getUser(user.id);
                 setProfile(res.data);
                 Toast.show({ type: 'success', text1: 'YouTube Music Connected!' });
             }
         } catch (error) {
-            console.error('YouTube Music connection failed:', error);
-            Toast.show({ type: 'error', text1: 'Connection failed' });
+            Toast.show({ type: 'error', text1: 'Connection failed', text2: 'Could not connect to YouTube Music' });
         } finally {
             setLoadingServices(false);
         }

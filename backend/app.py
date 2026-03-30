@@ -1145,6 +1145,18 @@ def _refresh_spotify_live_cache_async(user_id: int):
     import threading
     threading.Thread(target=_worker, daemon=True).start()
 
+@app.route('/api/auth/oauth-state', methods=['GET'])
+@jwt_required()
+def get_oauth_state():
+    """Return a short-lived HMAC-signed state token for the calling user.
+    The mobile client passes this as ?state= when initiating OAuth so the
+    callback can verify it wasn't tampered with (CSRF protection).
+    """
+    user_id = int(get_jwt_identity())
+    state = _generate_oauth_state(user_id)
+    return jsonify({'state': state})
+
+
 @app.route('/api/integrations/spotify/callback', methods=['GET', 'POST'])
 def spotify_callback():
     """Handle Spotify OAuth callback. Supports both GET (direct redirect) and POST (frontend relay)."""
@@ -1493,11 +1505,15 @@ def youtube_callback():
         # Check if it's a direct redirect (GET) or a frontend relay (POST)
         if request.method == 'GET':
             code = request.args.get('code')
-            state = request.args.get('state') # We expect the user_id in the state
+            state = request.args.get('state')
             if not state:
-                return "Missing state parameter (user_id required)", 400
-            user_id = int(state)
-            # Use exact env var to prevent OAuth 'invalid_grant' mismatches
+                return "Missing state parameter", 400
+            # Validate HMAC-signed state token (same pattern as Spotify)
+            user_id = _verify_oauth_state(state)
+            if user_id is None:
+                app.logger.warning("[YouTube] Invalid or expired OAuth state parameter")
+                return "Invalid or expired OAuth state. Please try linking YouTube Music again.", 400
+            # Always use the exact env var — must match what was registered in Google Cloud Console
             redirect_uri = YOUTUBE_REDIRECT_URI
         else:
             try:

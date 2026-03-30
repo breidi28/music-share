@@ -18,6 +18,7 @@ import { Colors } from '../theme';
 export default function ForgotPasswordScreen({ navigation }: any) {
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
+    const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
     const handleSendCode = async () => {
         Keyboard.dismiss();
@@ -65,14 +66,26 @@ export default function ForgotPasswordScreen({ navigation }: any) {
                     Enter the email address associated with your account and we'll send you a 6-digit reset code.
                 </Text>
 
-                <View className="flex-row items-center border border-gray-700 rounded-xl h-14 bg-neutral-900 px-4 mb-6">
-                    <Ionicons name="mail-outline" size={20} color={Colors.textSecondary} />
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: focusedInput === 'email' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+                    borderRadius: 12,
+                    height: 56,
+                    paddingHorizontal: 16,
+                    borderBottomWidth: 2,
+                    borderBottomColor: focusedInput === 'email' ? Colors.primary : 'transparent',
+                    marginBottom: 24
+                }}>
+                    <Ionicons name="mail" size={20} color={focusedInput === 'email' ? Colors.primary : '#6b7280'} />
                     <TextInput
-                        style={{ flex: 1, color: 'white', fontSize: 16, paddingLeft: 12, height: '100%' }}
+                        style={{ flex: 1, color: 'white', fontSize: 16, paddingLeft: 12, height: '100%', fontWeight: '600' }}
                         placeholderTextColor="#6b7280"
                         placeholder="Email address"
                         value={email}
                         onChangeText={setEmail}
+                        onFocus={() => setFocusedInput('email')}
+                        onBlur={() => setFocusedInput(null)}
                         autoCapitalize="none"
                         autoCorrect={false}
                         keyboardType="email-address"

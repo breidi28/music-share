@@ -672,7 +672,8 @@ export default function ProfileScreen({ navigation, route }: any) {
         ]);
     };
 
-    const renderTopNav = () => (
+    const renderTopNav = () => {
+        return (
         <BlurView
             intensity={90}
             tint="dark"
@@ -707,10 +708,25 @@ export default function ProfileScreen({ navigation, route }: any) {
                 ) : <View style={{ width: 60 }} />}
             </View>
         </BlurView>
-    );
+        );
+    };
 
-    const renderHeader = () => (
+    const renderHeader = () => {
+        const primaryText = 'white';
+        const secondaryText = '#8E8E93';
+        const mutedText = '#EBEBF5';
+        const overlayBg = 'rgba(255,255,255,0.06)';
+        const overlayBorder = 'rgba(255,255,255,0.12)';
+        
+        return (
         <View style={{ paddingTop: insets.top + 60, zIndex: 10, paddingBottom: 10 }}>
+            <LinearGradient
+                colors={['rgba(0,0,0,0.8)', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.1)', 'transparent']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 500, zIndex: 0 }}
+                pointerEvents="none"
+            />
             {/* ── Identity ───────────────────────────────────────────── */}
             <View style={{ alignItems: 'center', paddingHorizontal: 24, zIndex: 1 }}>
 
@@ -725,11 +741,11 @@ export default function ProfileScreen({ navigation, route }: any) {
                     </View>
                 )}
 
-                <Text style={{ color: 'white', fontWeight: '700', fontSize: 28, letterSpacing: 0.35 }}>{profile?.display_name}</Text>
-                <Text style={{ color: '#8E8E93', fontSize: 15, marginTop: 4, fontWeight: '400' }}>@{profile?.username}</Text>
+                <Text style={{ color: primaryText, fontWeight: '700', fontSize: 28, letterSpacing: 0.35 }}>{profile?.display_name}</Text>
+                <Text style={{ color: secondaryText, fontSize: 15, marginTop: 4, fontWeight: '400' }}>@{profile?.username}</Text>
 
                 {profile?.bio ? (
-                    <Text style={{ color: '#EBEBF5', textAlign: 'center', fontSize: 15, lineHeight: 22, marginTop: 12, maxWidth: 300 }}>{profile.bio}</Text>
+                    <Text style={{ color: mutedText, textAlign: 'center', fontSize: 15, lineHeight: 22, marginTop: 12, maxWidth: 300 }}>{profile.bio}</Text>
                 ) : null}
 
                 {isMe && (
@@ -740,17 +756,17 @@ export default function ProfileScreen({ navigation, route }: any) {
                             flexDirection: 'row',
                             alignItems: 'center',
                             alignSelf: 'center',
-                            backgroundColor: 'rgba(255,255,255,0.06)',
+                            backgroundColor: overlayBg,
                             borderWidth: 1,
-                            borderColor: 'rgba(255,255,255,0.12)',
+                            borderColor: overlayBorder,
                             borderRadius: 999,
                             paddingHorizontal: 12,
                             minHeight: 36,
                         }}
                     >
                         <Ionicons name="stats-chart" size={14} color={accentColor} />
-                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600', marginLeft: 6 }}>Weekly Recap</Text>
-                        <Ionicons name="chevron-forward" size={14} color="#8E8E93" style={{ marginLeft: 4 }} />
+                        <Text style={{ color: primaryText, fontSize: 13, fontWeight: '600', marginLeft: 6 }}>Weekly Recap</Text>
+                        <Ionicons name="chevron-forward" size={14} color={secondaryText} style={{ marginLeft: 4 }} />
                     </TouchableOpacity>
                 )}
 
@@ -758,8 +774,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                 {profile?.favorite_genres ? (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 16 }}>
                         {profile.favorite_genres.split(',').filter(Boolean).map(g => (
-                            <View key={g} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: `${accentColor}40` }}>
-                                <Text style={{ color: '#EBEBF5', fontSize: 13, fontWeight: '500' }}>{g.trim()}</Text>
+                            <View key={g} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: overlayBg, borderWidth: 1, borderColor: overlayBorder }}>
+                                <Text style={{ color: mutedText, fontSize: 13, fontWeight: '500' }}>{g.trim()}</Text>
                             </View>
                         ))}
                     </View>
@@ -886,7 +902,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                                         paddingHorizontal: 16, 
                                         paddingVertical: 8, 
                                         borderRadius: 20, 
-                                        backgroundColor: active ? s.color : 'rgba(255,255,255,0.12)', 
+                                        backgroundColor: active ? s.color : overlayBg, 
                                         shadowColor: active ? s.color : 'transparent',
                                         shadowOffset: { width: 0, height: 4 },
                                         shadowOpacity: 0.3,
@@ -895,20 +911,20 @@ export default function ProfileScreen({ navigation, route }: any) {
                                     }}
                                 >
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                        <Text style={{ fontSize: 13, fontWeight: '700', color: active ? getContrastColor(s.color) : 'rgba(255,255,255,0.7)' }}>{s.label}</Text>
+                                        <Text style={{ fontSize: 13, fontWeight: '700', color: active ? getContrastColor(s.color) : secondaryText }}>{s.label}</Text>
                                     </View>
                                 </TouchableOpacity>
                             );
                         })}
                     </ScrollView>
 
-                    {/* Sub-tabs for the active service */}
+                    {/* ── Spotify ── */}
                     {selectedMusicService === 'spotify' && profile?.has_spotify_linked && (
                         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['recent', 'artists', 'playlists'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setSpotifyTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: spotifyTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: spotifyTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
-                                    <Text style={{ fontSize: 13, fontWeight: '600', color: spotifyTab === tab ? 'white' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: spotifyTab === tab ? overlayBg : 'transparent', borderWidth: 1, borderColor: spotifyTab === tab ? overlayBorder : 'transparent' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: spotifyTab === tab ? primaryText : secondaryText }}>
                                         {tab === 'recent' ? 'Recent' : tab === 'artists' ? 'Top Artists' : 'Playlists'}
                                     </Text>
                                 </TouchableOpacity>
@@ -919,8 +935,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['history', 'liked', 'playlists'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setYoutubeTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: youtubeTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: youtubeTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
-                                    <Text style={{ fontSize: 13, fontWeight: '600', color: youtubeTab === tab ? 'white' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: youtubeTab === tab ? overlayBg : 'transparent', borderWidth: 1, borderColor: youtubeTab === tab ? overlayBorder : 'transparent' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: youtubeTab === tab ? primaryText : secondaryText }}>
                                         {tab === 'history' ? 'History' : tab === 'liked' ? 'Liked' : 'Playlists'}
                                     </Text>
                                 </TouchableOpacity>
@@ -931,8 +947,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['playlists', 'favorites'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setTidalTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: tidalTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: tidalTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
-                                    <Text style={{ fontSize: 13, fontWeight: '600', color: tidalTab === tab ? 'white' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: tidalTab === tab ? overlayBg : 'transparent', borderWidth: 1, borderColor: tidalTab === tab ? overlayBorder : 'transparent' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: tidalTab === tab ? primaryText : secondaryText }}>
                                         {tab === 'playlists' ? 'Playlists' : 'Favorites'}
                                     </Text>
                                 </TouchableOpacity>
@@ -943,8 +959,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['playlists', 'favorites'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setQobuzTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: qobuzTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: qobuzTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
-                                    <Text style={{ fontSize: 13, fontWeight: '600', color: qobuzTab === tab ? 'white' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: qobuzTab === tab ? overlayBg : 'transparent', borderWidth: 1, borderColor: qobuzTab === tab ? overlayBorder : 'transparent' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: qobuzTab === tab ? primaryText : secondaryText }}>
                                         {tab === 'playlists' ? 'Playlists' : 'Favorites'}
                                     </Text>
                                 </TouchableOpacity>
@@ -955,8 +971,8 @@ export default function ProfileScreen({ navigation, route }: any) {
                         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                             {(['playlists', 'favorites'] as const).map(tab => (
                                 <TouchableOpacity key={tab} onPress={() => setDeezerTab(tab)}
-                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: deezerTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent', borderWidth: 1, borderColor: deezerTab === tab ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)' }}>
-                                    <Text style={{ fontSize: 13, fontWeight: '600', color: deezerTab === tab ? 'white' : '#9ca3af' }}>
+                                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: deezerTab === tab ? overlayBg : 'transparent', borderWidth: 1, borderColor: deezerTab === tab ? overlayBorder : 'transparent' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: deezerTab === tab ? primaryText : secondaryText }}>
                                         {tab === 'playlists' ? 'Playlists' : 'Favorites'}
                                     </Text>
                                 </TouchableOpacity>
@@ -964,7 +980,7 @@ export default function ProfileScreen({ navigation, route }: any) {
                         </View>
                     )}
 
-                    {/* ── Spotify ── */}
+                    {/* ── Spotify Data ── */}
                     {selectedMusicService === 'spotify' && profile?.has_spotify_linked && (
                         spotifyLoading ? <ActivityIndicator color="#1DB954" /> : (
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
@@ -1137,20 +1153,21 @@ export default function ProfileScreen({ navigation, route }: any) {
                                     paddingHorizontal: 20, 
                                     paddingVertical: 10, 
                                     borderRadius: 14, 
-                                    backgroundColor: active ? accentColor : 'rgba(255,255,255,0.08)',
+                                    backgroundColor: active ? accentColor : overlayBg,
                                     borderWidth: 1,
-                                    borderColor: active ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)'
+                                    borderColor: active ? 'transparent' : overlayBorder
                                 }}
                             >
-                                <Ionicons name={tab.icon} size={15} color={active ? getContrastColor(accentColor) : '#8E8E93'} />
-                                <Text style={{ fontSize: 15, fontWeight: '700', color: active ? getContrastColor(accentColor) : '#8E8E93' }}>{tab.label}</Text>
+                                <Ionicons name={tab.icon} size={15} color={active ? getContrastColor(accentColor) : secondaryText} />
+                                <Text style={{ fontSize: 15, fontWeight: '700', color: active ? getContrastColor(accentColor) : secondaryText }}>{tab.label}</Text>
                             </TouchableOpacity>
                         );
                     })}
                 </ScrollView>
             </View>
         </View>
-    );
+        );
+    };
     const parsedOptions = React.useMemo(() => {
         try {
             return profile?.kawarp_config ? JSON.parse(profile.kawarp_config) : undefined;

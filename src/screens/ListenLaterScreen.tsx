@@ -78,13 +78,15 @@ export default function ListenLaterScreen({ navigation }: any) {
                         />
                     }
                     ListEmptyComponent={
-                        <View style={{ paddingVertical: 80, alignItems: 'center', paddingHorizontal: 28 }}>
-                            <Ionicons name="bookmark-outline" size={56} color="#4b5563" />
-                            <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 14 }}>
+                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 120, paddingHorizontal: 32 }}>
+                            <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: 'rgba(250, 36, 60, 0.2)', marginBottom: 24, justifyContent: 'center', alignItems: 'center' }}>
+                                <Ionicons name="bookmark" size={40} color="#FA243C" />
+                            </View>
+                            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 8 }}>
                                 Nothing saved yet
                             </Text>
-                            <Text style={{ color: '#6b7280', fontSize: 14, textAlign: 'center', marginTop: 8 }}>
-                                Save tracks from posts using the bookmark icon and they will show up here.
+                            <Text style={{ color: '#9ca3af', fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
+                                Save tracks from your friends' posts using the bookmark icon to listen to them later when you have time.
                             </Text>
                         </View>
                     }
