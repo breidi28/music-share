@@ -92,6 +92,30 @@ limiter = Limiter(
     storage_uri=os.getenv('RATELIMIT_STORAGE_URI', 'memory://'),
 )
 
+# ─── Global JSON Error Handlers ───────────────────────────────────────────────
+# Ensure the API always responds with JSON, never with Flask's default HTML pages.
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({'error': 'Not found', 'detail': str(e)}), 404
+
+@app.errorhandler(405)
+def method_not_allowed(e):
+    return jsonify({'error': 'Method not allowed'}), 405
+
+@app.errorhandler(500)
+def internal_error(e):
+    app.logger.error(f'[500] Unhandled server error: {str(e)}')
+    db.session.rollback()
+    return jsonify({'error': 'Internal server error', 'detail': str(e)}), 500
+
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    app.logger.error(f'[Unhandled Exception] {type(e).__name__}: {str(e)}')
+    db.session.rollback()
+    return jsonify({'error': 'Unexpected server error', 'detail': str(e)}), 500
+
+
 # ─── OAuth CSRF-state helpers ──────────────────────────────────────────────────
 _STATE_SEP = ':'
 _STATE_EXPIRY_SECONDS = 600  # 10 minutes
@@ -1344,82 +1368,98 @@ def _spotify_get(user, endpoint: str):
 @jwt_required()
 def spotify_recent():
     """Last 20 recently played tracks for a user."""
-    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
-    user = db.get_or_404(User, user_id)
+    try:
+        user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+        user = db.get_or_404(User, user_id)
 
-    data, err = _spotify_get(user, 'me/player/recently-played?limit=20')
-    if err:
-        app.logger.error(f'[Spotify Recent] Error for user {user_id}: {err}')
-        return jsonify({'error': err}), 400
+        data, err = _spotify_get(user, 'me/player/recently-played?limit=20')
+        if err:
+            app.logger.error(f'[Spotify Recent] Error for user {user_id}: {err}')
+            return jsonify({'error': err}), 400
 
-    items = data.get('items', []) if data else []
-    app.logger.info(f'[Spotify Recent] Found {len(items)} tracks for user {user_id}')
-    
-    tracks = []
-    for item in items:
-        t = item.get('track', {})
-        tracks.append({
-            'track_title': t.get('name', ''),
-            'artist': ', '.join(a['name'] for a in t.get('artists', [])),
-            'album': t.get('album', {}).get('name', ''),
-            'album_art_url': (t.get('album', {}).get('images') or [{}])[0].get('url', ''),
-            'spotify_url': t.get('external_urls', {}).get('spotify', ''),
-            'played_at': item.get('played_at', ''),
-        })
-    return jsonify(tracks)
+        items = data.get('items', []) if data else []
+        app.logger.info(f'[Spotify Recent] Found {len(items)} tracks for user {user_id}')
+
+        tracks = []
+        for item in items:
+            t = item.get('track') or {}
+            if not t:
+                continue
+            tracks.append({
+                'track_title': t.get('name', ''),
+                'artist': ', '.join(a['name'] for a in t.get('artists', [])),
+                'album': t.get('album', {}).get('name', ''),
+                'album_art_url': (t.get('album', {}).get('images') or [{}])[0].get('url', ''),
+                'spotify_url': t.get('external_urls', {}).get('spotify', ''),
+                'played_at': item.get('played_at', ''),
+            })
+        return jsonify(tracks)
+    except Exception as e:
+        app.logger.error(f'[Spotify Recent] Unexpected error: {str(e)}')
+        return jsonify({'error': 'Failed to fetch recent tracks', 'detail': str(e)}), 500
 
 
 @app.route('/api/integrations/spotify/top-artists', methods=['GET'])
 @jwt_required()
 def spotify_top_artists():
     """Top 10 artists (medium term ≈ last 6 months) for a user."""
-    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
-    user = db.get_or_404(User, user_id)
+    try:
+        user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+        user = db.get_or_404(User, user_id)
 
-    data, err = _spotify_get(user, 'me/top/artists?limit=10&time_range=medium_term')
-    if err:
-        app.logger.error(f'[Spotify Top Artists] Error for user {user_id}: {err}')
-        return jsonify({'error': err}), 400
+        data, err = _spotify_get(user, 'me/top/artists?limit=10&time_range=medium_term')
+        if err:
+            app.logger.error(f'[Spotify Top Artists] Error for user {user_id}: {err}')
+            return jsonify({'error': err}), 400
 
-    items = data.get('items', []) if data else []
-    app.logger.info(f'[Spotify Top Artists] Found {len(items)} artists for user {user_id}')
-    
-    artists = []
-    for a in items:
-        artists.append({
-            'name': a.get('name', ''),
-            'image_url': (a.get('images') or [{}])[0].get('url', ''),
-            'genres': a.get('genres', [])[:3],
-            'spotify_url': a.get('external_urls', {}).get('spotify', ''),
-            'followers': a.get('followers', {}).get('total', 0),
-        })
-    return jsonify(artists)
+        items = data.get('items', []) if data else []
+        app.logger.info(f'[Spotify Top Artists] Found {len(items)} artists for user {user_id}')
+
+        artists = []
+        for a in items:
+            artists.append({
+                'name': a.get('name', ''),
+                'image_url': (a.get('images') or [{}])[0].get('url', ''),
+                'genres': a.get('genres', [])[:3],
+                'spotify_url': a.get('external_urls', {}).get('spotify', ''),
+                'followers': a.get('followers', {}).get('total', 0),
+            })
+        return jsonify(artists)
+    except Exception as e:
+        app.logger.error(f'[Spotify Top Artists] Unexpected error: {str(e)}')
+        return jsonify({'error': 'Failed to fetch top artists', 'detail': str(e)}), 500
 
 
 @app.route('/api/integrations/spotify/playlists', methods=['GET'])
 @jwt_required()
 def spotify_playlists():
     """User's public + private playlists (first 20)."""
-    user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
-    user = db.get_or_404(User, user_id)
+    try:
+        user_id = request.args.get('user_id', type=int) or int(get_jwt_identity())
+        user = db.get_or_404(User, user_id)
 
-    data, err = _spotify_get(user, 'me/playlists?limit=20')
-    if err:
-        return jsonify({'error': err}), 400
+        data, err = _spotify_get(user, 'me/playlists?limit=20')
+        if err:
+            return jsonify({'error': err}), 400
 
-    items = data.get('items', []) if data else []
-    
-    playlists = []
-    for p in items:
-        playlists.append({
-            'name': p.get('name', ''),
-            'image_url': (p.get('images') or [{}])[0].get('url', ''),
-            'track_count': p.get('tracks', {}).get('total', 0),
-            'spotify_url': p.get('external_urls', {}).get('spotify', ''),
-            'owner': p.get('owner', {}).get('display_name', ''),
-            'public': p.get('public', True),
-        })
-    return jsonify(playlists)
+        items = data.get('items', []) if data else []
+
+        playlists = []
+        for p in items:
+            if not p:  # Spotify can return null items
+                continue
+            playlists.append({
+                'name': p.get('name', ''),
+                'image_url': (p.get('images') or [{}])[0].get('url', ''),
+                'track_count': p.get('tracks', {}).get('total', 0),
+                'spotify_url': p.get('external_urls', {}).get('spotify', ''),
+                'owner': p.get('owner', {}).get('display_name', ''),
+                'public': p.get('public', True),
+            })
+        return jsonify(playlists)
+    except Exception as e:
+        app.logger.error(f'[Spotify Playlists] Unexpected error: {str(e)}')
+        return jsonify({'error': 'Failed to fetch playlists', 'detail': str(e)}), 500
 
 
 @app.route('/api/integrations/spotify/disconnect', methods=['DELETE'])
