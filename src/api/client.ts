@@ -38,14 +38,9 @@ function resolveApiBaseUrl(): string {
     const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
     if (envUrl) return envUrl;
 
-    if (!__DEV__) return PROD_API_BASE_URL;
-
-    const hostIp = resolveExpoHostIp();
-    if (hostIp) {
-        return `http://${hostIp}:5000/api`;
-    }
-
-    return LOCAL_API_BASE_URL;
+    // Default to the production Render backend for both local dev and production, 
+    // unless EXPO_PUBLIC_API_BASE_URL is explicitly set to LOCAL in the .env file.
+    return PROD_API_BASE_URL;
 }
 
 // Toggle between LOCAL and PROD here
