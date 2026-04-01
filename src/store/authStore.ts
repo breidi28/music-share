@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../types';
 import { authApi } from '../api/endpoints';
+import { clearAuthToken, getAuthToken, setAuthToken } from '../utils/tokenStorage';
 
 interface AuthState {
     user: User | null;
@@ -23,7 +23,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     loadStoredAuth: async () => {
         try {
-            const token = await AsyncStorage.getItem('auth_token');
+            const token = await getAuthToken();
             if (token) {
                 const response = await authApi.getMe();
                 set({ user: response.data, token, isAuthenticated: true, isLoading: false });
@@ -31,7 +31,7 @@ export const useAuthStore = create<AuthState>((set) => ({
                 set({ isLoading: false });
             }
         } catch {
-            await AsyncStorage.removeItem('auth_token');
+            await clearAuthToken();
             set({ isLoading: false });
         }
     },
@@ -39,19 +39,19 @@ export const useAuthStore = create<AuthState>((set) => ({
     login: async (username, password) => {
         const response = await authApi.login(username, password);
         const { token, user } = response.data;
-        await AsyncStorage.setItem('auth_token', token);
+        await setAuthToken(token);
         set({ user, token, isAuthenticated: true });
     },
 
     register: async (data) => {
         const response = await authApi.register(data);
         const { token, user } = response.data;
-        await AsyncStorage.setItem('auth_token', token);
+        await setAuthToken(token);
         set({ user, token, isAuthenticated: true });
     },
 
     logout: async () => {
-        await AsyncStorage.removeItem('auth_token');
+        await clearAuthToken();
         set({ user: null, token: null, isAuthenticated: false });
     },
 

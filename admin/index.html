@@ -9,14 +9,16 @@
     <style>
         :root {
             --primary: #fa243c;
-            --primary-glow: rgba(250, 36, 60, 0.4);
-            --bg: #000000;
-            --panel: rgba(20, 20, 25, 0.7);
-            --border: rgba(255, 255, 255, 0.1);
+            --primary-glow: rgba(250, 36, 60, 0.35);
+            --bg: #050507;
+            --panel: rgba(20, 20, 26, 0.8);
+            --panel-2: rgba(28, 28, 34, 0.8);
+            --border: rgba(255, 255, 255, 0.11);
             --text: #ffffff;
             --text-dim: #a1a1aa;
             --success: #22c55e;
             --danger: #ef4444;
+            --warning: #f59e0b;
         }
 
         * {
@@ -27,16 +29,15 @@
         }
 
         body {
-            background-color: var(--bg);
+            background: radial-gradient(circle at 85% -10%, rgba(250, 36, 60, 0.15) 0%, transparent 45%), var(--bg);
             color: var(--text);
             min-height: 100vh;
             display: flex;
             overflow: hidden;
         }
 
-        /* Sidebar */
         .sidebar {
-            width: 260px;
+            width: 270px;
             background: rgba(10, 10, 15, 0.95);
             border-right: 1px solid var(--border);
             display: flex;
@@ -51,7 +52,7 @@
             gap: 12px;
             font-size: 20px;
             font-weight: 700;
-            margin-bottom: 48px;
+            margin-bottom: 40px;
             color: var(--primary);
         }
 
@@ -59,6 +60,7 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+            margin-bottom: auto;
         }
 
         .nav-item {
@@ -83,31 +85,23 @@
             background: rgba(250, 36, 60, 0.1);
         }
 
-        /* Main Content */
         .main {
             flex: 1;
-            padding: 40px;
+            padding: 36px;
             overflow-y: auto;
             position: relative;
-        }
-
-        .main::before {
-            content: '';
-            position: absolute;
-            top: -100px;
-            right: -100px;
-            width: 400px;
-            height: 400px;
-            background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
-            z-index: -1;
-            filter: blur(60px);
         }
 
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 40px;
+            margin-bottom: 32px;
+        }
+
+        .header h1 {
+            font-size: 30px;
+            font-weight: 700;
         }
 
         .user-info {
@@ -127,72 +121,100 @@
             font-weight: 600;
         }
 
-        /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 24px;
-            margin-bottom: 40px;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 18px;
+            margin-bottom: 24px;
         }
 
         .stat-card {
             background: var(--panel);
+            -webkit-backdrop-filter: blur(12px);
             backdrop-filter: blur(12px);
             border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 24px;
+            border-radius: 20px;
+            padding: 20px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 10px;
         }
 
         .stat-value {
-            font-size: 32px;
+            font-size: 30px;
             font-weight: 700;
         }
 
         .stat-label {
             color: var(--text-dim);
-            font-size: 14px;
+            font-size: 13px;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
         }
 
-        /* Tables & Lists */
         .card {
             background: var(--panel);
+            -webkit-backdrop-filter: blur(12px);
             backdrop-filter: blur(12px);
             border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 32px;
+            border-radius: 20px;
+            padding: 22px;
+            margin-bottom: 20px;
         }
 
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .search-input {
+            padding: 9px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.04);
+            color: white;
+            min-width: 230px;
+            outline: none;
+        }
+
+        .search-input:focus {
+            border-color: rgba(250, 36, 60, 0.5);
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
+            font-size: 14px;
         }
 
         th {
             text-align: left;
             color: var(--text-dim);
             font-weight: 500;
-            font-size: 14px;
-            padding: 12px 16px;
+            font-size: 13px;
+            padding: 10px 12px;
             border-bottom: 1px solid var(--border);
         }
 
         td {
-            padding: 16px;
+            padding: 12px;
             border-bottom: 1px solid var(--border);
-            font-size: 14px;
+            vertical-align: top;
         }
 
         .status-badge {
@@ -200,32 +222,40 @@
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
 
         .status-badge.admin { background: rgba(250, 36, 60, 0.2); color: var(--primary); }
         .status-badge.banned { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
         .status-badge.active { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .status-badge.warn { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
 
         .btn {
-            padding: 8px 16px;
+            padding: 8px 12px;
             border-radius: 10px;
             border: none;
             font-weight: 600;
             cursor: pointer;
             transition: 0.2s;
-            font-size: 13px;
+            font-size: 12px;
         }
 
         .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { transform: scale(1.02); box-shadow: 0 4px 20px var(--primary-glow); }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px var(--primary-glow); }
 
         .btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
         .btn-ghost:hover { background: rgba(255, 255, 255, 0.05); color: white; }
 
-        .btn-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
+        .btn-danger { background: rgba(239, 68, 68, 0.12); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
         .btn-danger:hover { background: var(--danger); color: white; }
 
-        /* Login Overlay */
+        .text-dim { color: var(--text-dim); }
+        .mono { font-family: Consolas, Monaco, 'Courier New', monospace; font-size: 12px; }
+        .db-meta { margin-bottom: 8px; }
+        .db-uri { margin-bottom: 16px; word-break: break-all; }
+
         #login-overlay {
             position: fixed;
             inset: 0;
@@ -239,61 +269,91 @@
 
         .login-box {
             width: 100%;
-            max-width: 400px;
-            padding: 40px;
-            background: var(--panel);
+            max-width: 420px;
+            padding: 34px;
+            background: var(--panel-2);
             border: 1px solid var(--border);
-            border-radius: 32px;
+            border-radius: 24px;
+            -webkit-backdrop-filter: blur(20px);
             backdrop-filter: blur(20px);
         }
 
-        .login-box input {
+        .login-title {
+            margin-bottom: 12px;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .login-subtitle {
+            color: var(--text-dim);
+            margin-bottom: 28px;
+            font-size: 14px;
+        }
+
+        .login-input {
             width: 100%;
-            padding: 16px;
+            padding: 14px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--border);
-            border-radius: 14px;
+            border-radius: 12px;
             color: white;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
             outline: none;
             transition: 0.2s;
         }
 
-        .login-box input:focus {
+        .login-input:focus {
             border-color: var(--primary);
         }
 
-        /* Loader */
-        .loader {
-            width: 48px;
-            height: 48px;
-            border: 4px solid var(--border);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 14px;
         }
 
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .login-error {
+            color: var(--danger);
+            margin-top: 14px;
+            font-size: 14px;
+            min-height: 18px;
+        }
 
         .hidden { display: none !important; }
+
+        @media (max-width: 980px) {
+            body { flex-direction: column; overflow: auto; }
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+                padding: 14px;
+            }
+            .logo { margin-bottom: 14px; }
+            .nav-items { flex-direction: row; flex-wrap: wrap; }
+            .main { padding: 16px; }
+            .controls { width: 100%; justify-content: flex-end; }
+            .search-input { min-width: 100%; }
+            .card-header { flex-direction: column; align-items: flex-start; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+        }
     </style>
 </head>
 <body>
     <div id="login-overlay">
         <div class="login-box">
-            <h1 style="margin-bottom: 12px;">Admin Login</h1>
-            <p style="color: var(--text-dim); margin-bottom: 32px;">Please authenticate to access the dashboard</p>
-            <input type="email" id="login-email" placeholder="Email Address">
-            <input type="password" id="login-pass" placeholder="Password">
-            <button class="btn btn-primary" style="width: 100%; padding: 16px;" onclick="handleLogin()">Sign In</button>
-            <p id="login-error" style="color: var(--danger); margin-top: 16px; font-size: 14px;"></p>
+            <h1 class="login-title">Admin Login</h1>
+            <p class="login-subtitle">Authenticate with an admin account to access the control center</p>
+            <input class="login-input" type="text" id="login-email" placeholder="Username or email">
+            <input class="login-input" type="password" id="login-pass" placeholder="Password">
+            <button class="btn btn-primary login-btn" onclick="handleLogin()">Sign In</button>
+            <p id="login-error" class="login-error"></p>
         </div>
     </div>
 
     <div class="sidebar">
         <div class="logo">
-            <i data-lucide="music"></i>
+            <i data-lucide="shield-check"></i>
             <span>MusicShare Admin</span>
         </div>
         <div class="nav-items">
@@ -304,6 +364,14 @@
             <div class="nav-item" onclick="showView('users')">
                 <i data-lucide="users"></i>
                 <span>Users</span>
+            </div>
+            <div class="nav-item" onclick="showView('posts')">
+                <i data-lucide="file-music"></i>
+                <span>Posts</span>
+            </div>
+            <div class="nav-item" onclick="showView('database')">
+                <i data-lucide="database"></i>
+                <span>Database</span>
             </div>
             <div class="nav-item" onclick="logout()">
                 <i data-lucide="log-out"></i>
@@ -321,33 +389,40 @@
             </div>
         </div>
 
-        <!-- Overview Section -->
         <div id="overview-view">
             <div class="stats-grid" id="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-label"><i data-lucide="users"></i> Total Users</div>
+                    <div class="stat-label"><i data-lucide="users"></i>Total Users</div>
                     <div class="stat-value" id="stat-total-users">-</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label"><i data-lucide="message-square"></i> New Posts (24h)</div>
+                    <div class="stat-label"><i data-lucide="file-music"></i>Total Posts</div>
+                    <div class="stat-value" id="stat-total-posts">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label"><i data-lucide="message-square"></i>Total Comments</div>
+                    <div class="stat-value" id="stat-total-comments">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label"><i data-lucide="clock-3"></i>New Users (24h)</div>
+                    <div class="stat-value" id="stat-new-users">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label"><i data-lucide="activity"></i>New Posts (24h)</div>
                     <div class="stat-value" id="stat-new-posts">-</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label"><i data-lucide="activity"></i> Spotify Linked</div>
+                    <div class="stat-label"><i data-lucide="spotify"></i>Spotify Linked</div>
                     <div class="stat-value" id="stat-spotify">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label"><i data-lucide="youtube"></i> YouTube Linked</div>
-                    <div class="stat-value" id="stat-youtube">-</div>
                 </div>
             </div>
 
             <div class="card">
                 <div class="card-header">
-                    <h2>Recent Users</h2>
-                    <button class="btn btn-ghost" onclick="showView('users')">View All</button>
+                    <h2 class="card-title">Recent Users</h2>
+                    <button class="btn btn-ghost" onclick="showView('users')">Open User Management</button>
                 </div>
-                <table id="recent-users-table">
+                <table>
                     <thead>
                         <tr>
                             <th>User</th>
@@ -356,24 +431,43 @@
                             <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="recent-users-body">
-                        <!-- Populated by JS -->
-                    </tbody>
+                    <tbody id="recent-users-body"></tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Recent Posts</h2>
+                    <button class="btn btn-ghost" onclick="showView('posts')">Open Moderation</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Track</th>
+                            <th>Author</th>
+                            <th>Type</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-posts-body"></tbody>
                 </table>
             </div>
         </div>
 
-        <!-- Users Section -->
         <div id="users-view" class="hidden">
             <div class="card">
                 <div class="card-header">
-                    <h2>User Management</h2>
-                    <input type="text" placeholder="Search users..." class="btn-ghost" style="padding: 8px 16px; border-radius: 10px; min-width: 240px;" onkeyup="searchUsers(this.value)">
+                    <h2 class="card-title">User Management</h2>
+                    <div class="controls">
+                        <input id="users-search" class="search-input" type="text" placeholder="Search by username, display name or email" onkeyup="searchUsers(this.value)">
+                        <button class="btn btn-ghost" onclick="refreshData()">Refresh</button>
+                    </div>
                 </div>
-                <table id="all-users-table">
+                <table>
                     <thead>
                         <tr>
-                            <th>Username</th>
+                            <th>User</th>
                             <th>Email</th>
                             <th>Role</th>
                             <th>Status</th>
@@ -381,21 +475,64 @@
                             <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="all-users-body">
-                        <!-- Populated by JS -->
-                    </tbody>
+                    <tbody id="all-users-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="posts-view" class="hidden">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Post Moderation</h2>
+                    <div class="controls">
+                        <input id="posts-search" class="search-input" type="text" placeholder="Search by track, artist, caption or author" onkeyup="searchPosts(this.value)">
+                        <button class="btn btn-ghost" onclick="refreshData()">Refresh</button>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Track</th>
+                            <th>Author</th>
+                            <th>Engagement</th>
+                            <th>Type</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="all-posts-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="database-view" class="hidden">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Database Monitoring</h2>
+                    <button class="btn btn-ghost" onclick="refreshData()">Refresh</button>
+                </div>
+                <p class="text-dim db-meta" id="db-engine"></p>
+                <p class="text-dim mono db-uri" id="db-uri"></p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Table</th>
+                            <th>Rows</th>
+                        </tr>
+                    </thead>
+                    <tbody id="db-tables-body"></tbody>
                 </table>
             </div>
         </div>
     </div>
 
     <script>
-        // Constants & State
         const API_BASE = window.location.origin + '/api';
         let token = localStorage.getItem('admin_token');
         let allUsers = [];
+        let allPosts = [];
+        let dbSummary = { tables: [] };
 
-        // App Initialization
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
 
@@ -412,18 +549,31 @@
             }
         });
 
-        // Navigation
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+        }
+
         function showView(view) {
             document.querySelectorAll('[id$="-view"]').forEach(el => el.classList.add('hidden'));
             document.getElementById(`${view}-view`).classList.remove('hidden');
-            
+
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
             document.querySelector(`.nav-item[onclick="showView('${view}')"]`)?.classList.add('active');
-            
-            document.getElementById('view-title').textContent = view.charAt(0).toUpperCase() + view.slice(1) + (view === 'overview' ? ' Overview' : ' Management');
+
+            const labels = {
+                overview: 'Dashboard Overview',
+                users: 'User Management',
+                posts: 'Post Moderation',
+                database: 'Database Monitoring'
+            };
+            document.getElementById('view-title').textContent = labels[view] || 'Admin Dashboard';
         }
 
-        // Authentication
         async function handleLogin() {
             const identifier = document.getElementById('login-email').value.trim().toLowerCase();
             const password = document.getElementById('login-pass').value;
@@ -448,16 +598,6 @@
                 token = data.token || data.access_token;
                 if (!token) throw new Error('Authentication token missing from server response.');
                 localStorage.setItem('admin_token', token);
-                
-                // Fetch stats to verify admin status
-                const statsRes = await fetch(`${API_BASE}/admin/stats`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (!statsRes.ok) {
-                    logout();
-                    throw new Error('This account does not have administrative privileges.');
-                }
 
                 const meRes = await fetch(`${API_BASE}/auth/me`, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -476,7 +616,7 @@
                 document.getElementById('login-overlay').classList.add('hidden');
                 await refreshData();
             } catch (err) {
-                errorEl.textContent = err.message;
+                errorEl.textContent = err.message || 'Login failed';
             }
         }
 
@@ -485,133 +625,238 @@
             if (reload) window.location.reload();
         }
 
-        // Data Fetching
+        async function apiFetch(path, options = {}) {
+            const res = await fetch(`${API_BASE}${path}`, {
+                ...options,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    ...(options.headers || {}),
+                }
+            });
+
+            if (res.status === 401 || res.status === 403) {
+                logout();
+                throw new Error('Unauthorized');
+            }
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        }
+
         async function refreshData() {
             try {
-                const [statsRes, usersRes] = await Promise.all([
-                    fetch(`${API_BASE}/admin/stats`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${API_BASE}/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } })
+                const [stats, usersPayload, postsPayload, dbPayload] = await Promise.all([
+                    apiFetch('/admin/stats'),
+                    apiFetch('/admin/users?per_page=500&page=1'),
+                    apiFetch('/admin/posts?per_page=200&page=1'),
+                    apiFetch('/admin/database/summary'),
                 ]);
 
-                if (statsRes.status === 401 || statsRes.status === 403 || usersRes.status === 401 || usersRes.status === 403) {
-                    logout();
-                    return;
-                }
-
-                if (!statsRes.ok || !usersRes.ok) {
-                    const statsErr = await statsRes.json().catch(() => ({}));
-                    const usersErr = await usersRes.json().catch(() => ({}));
-                    throw new Error(statsErr.error || usersErr.error || 'Failed to load admin data');
-                }
-
-                const stats = await statsRes.json();
-                allUsers = await usersRes.json();
+                allUsers = usersPayload.items || [];
+                allPosts = postsPayload.items || [];
+                dbSummary = dbPayload || { tables: [] };
 
                 updateStats(stats);
-                updateTables();
+                updateUsersTables();
+                updatePostsTables();
+                updateDatabaseView();
+                lucide.createIcons();
             } catch (err) {
                 console.error('Refresh error:', err);
             }
         }
 
         function updateStats(stats) {
-            document.getElementById('stat-total-users').textContent = stats.users;
-            document.getElementById('stat-new-posts').textContent = stats.new_posts_24h;
-            document.getElementById('stat-spotify').textContent = stats.linked_services.spotify;
-            document.getElementById('stat-youtube').textContent = stats.linked_services.youtube;
+            document.getElementById('stat-total-users').textContent = stats.users ?? 0;
+            document.getElementById('stat-total-posts').textContent = stats.posts ?? 0;
+            document.getElementById('stat-total-comments').textContent = stats.comments ?? 0;
+            document.getElementById('stat-new-users').textContent = stats.new_users_24h ?? 0;
+            document.getElementById('stat-new-posts').textContent = stats.new_posts_24h ?? 0;
+            document.getElementById('stat-spotify').textContent = stats.linked_services?.spotify ?? 0;
         }
 
-        function updateTables() {
+        function renderUserStatus(user) {
+            return user.is_banned
+                ? '<span class="status-badge banned">Banned</span>'
+                : '<span class="status-badge active">Active</span>';
+        }
+
+        function renderUserRole(user) {
+            return user.is_admin
+                ? '<span class="status-badge admin">Admin</span>'
+                : '<span class="status-badge">Member</span>';
+        }
+
+        function updateUsersTables() {
             const recentBody = document.getElementById('recent-users-body');
             const allBody = document.getElementById('all-users-body');
-            
+
             recentBody.innerHTML = '';
             allBody.innerHTML = '';
 
-            // Sort by latest joined
             const sortedUsers = [...allUsers].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-            // Populate Recent (limit 5)
-            sortedUsers.slice(0, 5).forEach(user => {
-                recentBody.innerHTML += renderUserRow(user, 'compact');
-            });
-
-            // Populate All
-            sortedUsers.forEach(user => {
-                allBody.innerHTML += renderUserRow(user, 'full');
-            });
-        }
-
-        function renderUserRow(user, mode) {
-            const statusClass = user.is_banned ? 'banned' : 'active';
-            const statusLabel = user.is_banned ? 'Banned' : 'Active';
-            const roleLabel = user.is_admin ? 'Admin' : 'Member';
-            const joinedAt = new Date(user.created_at).toLocaleDateString();
-
-            if (mode === 'compact') {
-                return `
+            sortedUsers.slice(0, 6).forEach(user => {
+                const joinedAt = user.created_at ? new Date(user.created_at).toLocaleString() : '-';
+                recentBody.innerHTML += `
                     <tr>
                         <td>
                             <div style="display: flex; flex-direction: column;">
-                                <span style="font-weight: 600;">${user.username}</span>
-                                <span style="font-size: 12px; color: var(--text-dim);">${user.email}</span>
+                                <span style="font-weight: 600;">${escapeHtml(user.username)}</span>
+                                <span class="text-dim">${escapeHtml(user.email)}</span>
                             </div>
                         </td>
-                        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-                        <td>${joinedAt}</td>
+                        <td>${renderUserStatus(user)}</td>
+                        <td>${escapeHtml(joinedAt)}</td>
                         <td>
-                            <button class="btn btn-ghost" onclick="toggleBan(${user.id})">${user.is_banned ? 'Unban' : 'Ban'}</button>
+                            <button class="btn btn-ghost" onclick="toggleBan(${Number(user.id)})">${user.is_banned ? 'Unban' : 'Ban'}</button>
                         </td>
+                    </tr>
+                `;
+            });
+
+            sortedUsers.forEach(user => {
+                const joinedAt = user.created_at ? new Date(user.created_at).toLocaleString() : '-';
+                allBody.innerHTML += `
+                    <tr>
+                        <td>
+                            <div style="display: flex; flex-direction: column;">
+                                <span style="font-weight: 600;">${escapeHtml(user.username)}</span>
+                                <span class="text-dim">${escapeHtml(user.display_name || '')}</span>
+                            </div>
+                        </td>
+                        <td>${escapeHtml(user.email || '-')}</td>
+                        <td>${renderUserRole(user)}</td>
+                        <td>${renderUserStatus(user)}</td>
+                        <td>${escapeHtml(joinedAt)}</td>
+                        <td>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-danger" onclick="toggleBan(${Number(user.id)})">${user.is_banned ? 'Unban' : 'Ban'}</button>
+                                <button class="btn btn-primary" onclick="toggleAdmin(${Number(user.id)})">${user.is_admin ? 'Demote' : 'Promote'}</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function updatePostsTables() {
+            const recentBody = document.getElementById('recent-posts-body');
+            const allBody = document.getElementById('all-posts-body');
+            recentBody.innerHTML = '';
+            allBody.innerHTML = '';
+
+            const sortedPosts = [...allPosts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            sortedPosts.slice(0, 6).forEach(post => {
+                recentBody.innerHTML += renderPostRow(post, true);
+            });
+
+            sortedPosts.forEach(post => {
+                allBody.innerHTML += renderPostRow(post, false);
+            });
+        }
+
+        function renderPostRow(post, compact) {
+            const created = post.created_at ? new Date(post.created_at).toLocaleString() : '-';
+            const typeClass = post.post_type === 'now_playing' ? 'warn' : '';
+            const caption = post.caption ? `<div class="text-dim" style="margin-top: 4px; max-width: 420px;">${escapeHtml(post.caption)}</div>` : '';
+            const engagement = `${Number(post.likes_count || 0)} likes | ${Number(post.comments_count || 0)} comments`;
+
+            if (compact) {
+                return `
+                    <tr>
+                        <td>
+                            <div style="font-weight: 600;">${escapeHtml(post.track_title || '-')}</div>
+                            <div class="text-dim">${escapeHtml(post.artist || '-')}</div>
+                            ${caption}
+                        </td>
+                        <td>${escapeHtml(post.author_username || '-')}</td>
+                        <td><span class="status-badge ${typeClass}">${escapeHtml(post.post_type || '-')}</span></td>
+                        <td>${escapeHtml(created)}</td>
+                        <td><button class="btn btn-danger" onclick="deletePost(${Number(post.id)})">Delete</button></td>
                     </tr>
                 `;
             }
 
             return `
                 <tr>
-                    <td><span style="font-weight: 600;">${user.username}</span></td>
-                    <td>${user.email}</td>
-                    <td><span class="status-badge ${user.is_admin ? 'admin' : ''}">${roleLabel}</span></td>
-                    <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-                    <td>${joinedAt}</td>
                     <td>
-                        <div style="display: flex; gap: 8px;">
-                            <button class="btn btn-danger" onclick="toggleBan(${user.id})">${user.is_banned ? 'Unban' : 'Ban'}</button>
-                            <button class="btn btn-primary" onclick="toggleAdmin(${user.id})">${user.is_admin ? 'Demote' : 'Promote'}</button>
-                        </div>
+                        <div style="font-weight: 600;">${escapeHtml(post.track_title || '-')}</div>
+                        <div class="text-dim">${escapeHtml(post.artist || '-')} ${post.album ? `| ${escapeHtml(post.album)}` : ''}</div>
+                        ${caption}
                     </td>
+                    <td>
+                        <div style="font-weight: 600;">${escapeHtml(post.author_username || '-')}</div>
+                        <div class="text-dim">${escapeHtml(post.author_display_name || '')}</div>
+                    </td>
+                    <td>${escapeHtml(engagement)}</td>
+                    <td><span class="status-badge ${typeClass}">${escapeHtml(post.post_type || '-')}</span></td>
+                    <td>${escapeHtml(created)}</td>
+                    <td><button class="btn btn-danger" onclick="deletePost(${Number(post.id)})">Delete</button></td>
                 </tr>
             `;
         }
 
-        // Actions
+        function updateDatabaseView() {
+            document.getElementById('db-engine').textContent = `Engine: ${dbSummary.engine || '-'}`;
+            document.getElementById('db-uri').textContent = `URI: ${dbSummary.database_uri_masked || '-'}`;
+
+            const body = document.getElementById('db-tables-body');
+            body.innerHTML = '';
+            (dbSummary.tables || []).forEach(row => {
+                body.innerHTML += `
+                    <tr>
+                        <td class="mono">${escapeHtml(row.table)}</td>
+                        <td>${Number(row.rows || 0)}</td>
+                    </tr>
+                `;
+            });
+        }
+
         async function toggleBan(userId) {
-            if (!confirm('Are you sure you want to change this user\'s ban status?')) return;
+            if (!confirm('Change this user ban status?')) return;
             try {
-                const res = await fetch(`${API_BASE}/admin/users/${userId}/ban`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) refreshData();
-            } catch (err) { alert('Action failed'); }
+                await apiFetch(`/admin/users/${userId}/ban`, { method: 'POST' });
+                await refreshData();
+            } catch (err) {
+                alert(err.message || 'Action failed');
+            }
         }
 
         async function toggleAdmin(userId) {
-            if (!confirm('Are you sure you want to change this user\'s administrative privileges?')) return;
+            if (!confirm('Change this user admin role?')) return;
             try {
-                const res = await fetch(`${API_BASE}/admin/users/${userId}/admin`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) refreshData(); else {
-                    const data = await res.json();
-                    alert(data.error || 'Promotion failed');
-                }
-            } catch (err) { alert('Action failed'); }
+                await apiFetch(`/admin/users/${userId}/admin`, { method: 'POST' });
+                await refreshData();
+            } catch (err) {
+                alert(err.message || 'Action failed');
+            }
+        }
+
+        async function deletePost(postId) {
+            if (!confirm('Delete this post permanently?')) return;
+            try {
+                await apiFetch(`/admin/posts/${postId}`, { method: 'DELETE' });
+                await refreshData();
+            } catch (err) {
+                alert(err.message || 'Delete failed');
+            }
         }
 
         function searchUsers(query) {
-            const terms = query.toLowerCase();
+            const terms = query.trim().toLowerCase();
             const rows = document.querySelectorAll('#all-users-body tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.classList.toggle('hidden', !text.includes(terms));
+            });
+        }
+
+        function searchPosts(query) {
+            const terms = query.trim().toLowerCase();
+            const rows = document.querySelectorAll('#all-posts-body tr');
             rows.forEach(row => {
                 const text = row.textContent.toLowerCase();
                 row.classList.toggle('hidden', !text.includes(terms));

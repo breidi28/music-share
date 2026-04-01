@@ -6,7 +6,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 import os
@@ -76,6 +76,7 @@ if not _jwt_secret_key or _jwt_secret_key in _INSECURE_DEFAULTS:
 app.config['SECRET_KEY'] = _secret_key
 app.config['JWT_SECRET_KEY'] = _jwt_secret_key
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)  # Reduced from 30 days
+app.config['EXPOSE_ERROR_DETAILS'] = os.getenv('EXPOSE_ERROR_DETAILS', 'false').lower() in ('true', '1', 'yes')
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_recycle": 280,
     "pool_pre_ping": True,
@@ -83,6 +84,12 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
+
+def _error_payload(message: str, detail: str | None = None) -> dict:
+    payload = {'error': message}
+    if app.config.get('EXPOSE_ERROR_DETAILS') and detail:
+        payload['detail'] = detail
+    return payload
 
 # ─── Admin static handler and other helpers ───────────────────────────────────
 @app.route('/admin', methods=['GET'])
@@ -105,7 +112,7 @@ limiter = Limiter(
 
 @app.errorhandler(404)
 def not_found(e):
-    return jsonify({'error': 'Not found', 'detail': str(e)}), 404
+    return jsonify(_error_payload('Not found', str(e))), 404
 
 @app.errorhandler(405)
 def method_not_allowed(e):
@@ -115,13 +122,13 @@ def method_not_allowed(e):
 def internal_error(e):
     app.logger.error(f'[500] Unhandled server error: {str(e)}')
     db.session.rollback()
-    return jsonify({'error': 'Internal server error', 'detail': str(e)}), 500
+    return jsonify(_error_payload('Internal server error', str(e))), 500
 
 @app.errorhandler(Exception)
 def unhandled_exception(e):
     app.logger.error(f'[Unhandled Exception] {type(e).__name__}: {str(e)}')
     db.session.rollback()
-    return jsonify({'error': 'Unexpected server error', 'detail': str(e)}), 500
+    return jsonify(_error_payload('Unexpected server error', str(e))), 500
 
 from functools import wraps
 
@@ -1145,7 +1152,7 @@ def login():
     except Exception as e:
         import traceback
         app.logger.error(f'Login error: {str(e)}\n{traceback.format_exc()}')
-        return jsonify({'error': f'Login failed: {str(e)}'}), 500
+        return jsonify(_error_payload('Login failed', str(e))), 500
 
 
 @app.route('/api/auth/me', methods=['GET'])
@@ -4331,12 +4338,34 @@ def admin_stats():
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required()
 def admin_get_users():
-    """List all users for management."""
-    users = User.query.all()
-    return jsonify([u.to_dict() for u in users])
+    """List users for management (supports optional search + pagination)."""
+    q = request.args.get('q', '').strip()
+    page = max(1, int(request.args.get('page', 1)))
+    per_page = min(100, max(1, int(request.args.get('per_page', 200))))
+
+    query = User.query
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                User.username.ilike(like),
+                User.display_name.ilike(like),
+                User.email.ilike(like),
+            )
+        )
+
+    users_paginated = query.order_by(User.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        'items': [u.to_dict() for u in users_paginated.items],
+        'total': users_paginated.total,
+        'page': page,
+        'pages': users_paginated.pages,
+        'has_next': users_paginated.has_next,
+    })
 
 @app.route('/api/admin/users/<int:user_id>/ban', methods=['POST'])
 @admin_required()
+@limiter.limit('120 per hour; 20 per minute')
 def admin_toggle_ban(user_id):
     """Ban/unban a user."""
     user = db.session.get(User, user_id)
@@ -4352,6 +4381,7 @@ def admin_toggle_ban(user_id):
 
 @app.route('/api/admin/users/<int:user_id>/admin', methods=['POST'])
 @admin_required()
+@limiter.limit('120 per hour; 20 per minute')
 def admin_toggle_admin(user_id):
     """Promote/demote a user to/from admin."""
     # Prevent self-demotion
@@ -4368,6 +4398,102 @@ def admin_toggle_admin(user_id):
     return jsonify({
         'message': f'User {"promoted to" if user.is_admin else "demoted from"} admin successfully',
         'is_admin': user.is_admin
+    })
+
+
+def _admin_serialize_post(post: Post) -> dict:
+    return {
+        'id': post.id,
+        'user_id': post.user_id,
+        'author_username': post.author.username if post.author else None,
+        'author_display_name': post.author.display_name if post.author else None,
+        'track_title': post.track_title,
+        'artist': post.artist,
+        'album': post.album,
+        'caption': post.caption,
+        'post_type': post.post_type,
+        'genre': post.genre,
+        'likes_count': post.liked_by.count(),
+        'comments_count': Comment.query.filter_by(post_id=post.id).count(),
+        'created_at': (post.created_at.isoformat() + 'Z' if post.created_at and post.created_at.tzinfo is None else (post.created_at.isoformat() if post.created_at else None)),
+    }
+
+
+@app.route('/api/admin/posts', methods=['GET'])
+@admin_required()
+def admin_get_posts():
+    """List posts for moderation with optional search + pagination."""
+    q = request.args.get('q', '').strip()
+    page = max(1, int(request.args.get('page', 1)))
+    per_page = min(100, max(1, int(request.args.get('per_page', 50))))
+
+    query = Post.query.join(User, Post.user_id == User.id)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                Post.track_title.ilike(like),
+                Post.artist.ilike(like),
+                Post.caption.ilike(like),
+                Post.album.ilike(like),
+                User.username.ilike(like),
+                User.display_name.ilike(like),
+            )
+        )
+
+    paginated = query.order_by(Post.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        'items': [_admin_serialize_post(p) for p in paginated.items],
+        'total': paginated.total,
+        'page': page,
+        'pages': paginated.pages,
+        'has_next': paginated.has_next,
+    })
+
+
+@app.route('/api/admin/posts/<int:post_id>', methods=['DELETE'])
+@admin_required()
+@limiter.limit('180 per hour; 30 per minute')
+def admin_delete_post(post_id):
+    """Delete a post as an admin moderation action."""
+    post = db.session.get(Post, post_id)
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+
+    db.session.delete(post)
+    db.session.commit()
+    return jsonify({'message': 'Post deleted successfully'})
+
+
+@app.route('/api/admin/database/summary', methods=['GET'])
+@admin_required()
+def admin_database_summary():
+    """Return read-only database visibility for admin dashboard."""
+    table_models = [
+        ('users', User),
+        ('posts', Post),
+        ('comments', Comment),
+        ('notifications', Notification),
+        ('collections', CollectionItem),
+        ('post_reactions', PostReaction),
+        ('listen_later_items', ListenLaterItem),
+        ('collab_lists', CollabList),
+        ('collab_list_tracks', CollabListTrack),
+        ('weekly_recaps', WeeklyRecap),
+    ]
+
+    rows = []
+    for name, model in table_models:
+        rows.append({'table': name, 'rows': model.query.count()})
+
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    masked_uri = re.sub(r'://([^:/]+):([^@]+)@', r'://***:***@', uri) if uri else ''
+
+    return jsonify({
+        'engine': db.engine.dialect.name,
+        'database_uri_masked': masked_uri,
+        'tables': rows,
+        'generated_at': datetime.now(timezone.utc).isoformat(),
     })
 
 

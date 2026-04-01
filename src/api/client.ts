@@ -1,7 +1,7 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../store/authStore';
+import { getAuthToken } from '../utils/tokenStorage';
 
 // Allow suppressToast to be set per-request on Axios config
 declare module 'axios' {
@@ -22,13 +22,17 @@ const LOCAL_API_BASE_URL = 'http://localhost:5000/api';
 // NOTE: Use local URL if you are running 'python app.py' locally.
 export const API_BASE_URL = __DEV__ ? LOCAL_API_BASE_URL : PROD_API_BASE_URL;
 
+if (!__DEV__ && API_BASE_URL.startsWith('http://')) {
+    throw new Error('Insecure API_BASE_URL in production: HTTPS is required.');
+}
+
 const client = axios.create({
     baseURL: API_BASE_URL,
     timeout: 20000, 
 });
 
 client.interceptors.request.use(async (config) => {
-    const token = await AsyncStorage.getItem('auth_token');
+    const token = await getAuthToken();
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }

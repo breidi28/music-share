@@ -54,7 +54,9 @@ const SPOTIFY_REDIRECT_URI = AuthSession.makeRedirectUri({
     scheme: 'musicshare',
 });
 
-console.log('[Music Services OAuth] Spotify Redirect URI:', SPOTIFY_REDIRECT_URI);
+if (__DEV__) {
+    console.log('[Music Services OAuth] Spotify Redirect URI:', SPOTIFY_REDIRECT_URI);
+}
 
 export default function ProfileScreen({ navigation, route }: any) {
     const { userId } = route.params ?? {};
@@ -186,21 +188,18 @@ export default function ProfileScreen({ navigation, route }: any) {
                         Toast.show({ type: 'success', text1: 'YouTube Music Linked', text2: 'Successfully linked YouTube Music' });
                     })
                     .catch(e => {
-                        console.error('[YouTube OAuth] Backend error:', e);
+                        if (__DEV__) console.error('[YouTube OAuth] Backend error:', e);
                         Toast.show({ type: 'error', text1: 'Failed to link YouTube Music' });
                     });
             } else {
-                console.error('[YouTube OAuth] No authorization code in response params');
+                if (__DEV__) console.error('[YouTube OAuth] No authorization code in response params');
                 Toast.show({ type: 'error', text1: 'No authorization code received' });
             }
         } else if (youtubeResponse?.type === 'error') {
-            console.error('[YouTube OAuth] Error:', youtubeResponse.error, youtubeResponse.params);
+            if (__DEV__) console.error('[YouTube OAuth] Error:', youtubeResponse.error);
             Toast.show({ type: 'error', text1: 'Authentication Error', text2: youtubeResponse.error?.message || 'Failed to authenticate with YouTube' });
         } else if (youtubeResponse?.type === 'dismiss') {
-            console.log('[YouTube OAuth] User dismissed');
-        }
-        if (youtubeResponse) {
-            console.log('[YouTube OAuth] Full response:', JSON.stringify(youtubeResponse, null, 2));
+            if (__DEV__) console.log('[YouTube OAuth] User dismissed');
         }
     }, [youtubeResponse]);
 
@@ -214,16 +213,20 @@ export default function ProfileScreen({ navigation, route }: any) {
             spotifyApi.getPlaylists(profile.id),
         ])
             .then(([recent, artists, playlists]) => {
-                console.log('[Spotify] Recent tracks:', recent.data?.length || 0, recent.data);
-                console.log('[Spotify] Top artists:', artists.data?.length || 0, artists.data);
+                if (__DEV__) {
+                    console.log('[Spotify] Recent tracks count:', recent.data?.length || 0);
+                    console.log('[Spotify] Top artists count:', artists.data?.length || 0);
+                }
                 
                 setSpotifyRecent(Array.isArray(recent.data) ? recent.data : []);
                 setSpotifyArtists(Array.isArray(artists.data) ? artists.data : []);
                 setSpotifyPlaylists(Array.isArray(playlists.data) ? playlists.data : []);
             })
             .catch(err => {
-                console.error('[Spotify] Error fetching data:', err);
-                console.error('[Spotify] Error details:', err.response?.data);
+                if (__DEV__) {
+                    console.error('[Spotify] Error fetching data:', err);
+                    console.error('[Spotify] Error details:', err.response?.data);
+                }
                 if (err.response?.data?.error) {
                     
                 }
@@ -245,17 +248,21 @@ export default function ProfileScreen({ navigation, route }: any) {
             youtubeApi.getPlaylists(profile.id),
         ])
             .then(([history, liked, playlists]) => {
-                console.log('[YouTube Music] History:', history.data?.length || 0);
-                console.log('[YouTube Music] Liked:', liked.data?.length || 0);
-                console.log('[YouTube Music] Playlists:', playlists.data?.length || 0);
+                if (__DEV__) {
+                    console.log('[YouTube Music] History count:', history.data?.length || 0);
+                    console.log('[YouTube Music] Liked count:', liked.data?.length || 0);
+                    console.log('[YouTube Music] Playlists count:', playlists.data?.length || 0);
+                }
                 
                 setYoutubeHistory(Array.isArray(history.data) ? history.data : []);
                 setYoutubeLiked(Array.isArray(liked.data) ? liked.data : []);
                 setYoutubePlaylists(Array.isArray(playlists.data) ? playlists.data : []);
             })
             .catch(err => {
-                console.error('[YouTube Music] Error fetching data:', err);
-                console.error('[YouTube Music] Error details:', err.response?.data);
+                if (__DEV__) {
+                    console.error('[YouTube Music] Error fetching data:', err);
+                    console.error('[YouTube Music] Error details:', err.response?.data);
+                }
                 if (err.response?.data?.error) {
                     
                 }
@@ -272,12 +279,14 @@ export default function ProfileScreen({ navigation, route }: any) {
         setAppleLoading(true);
         appleMusicApi.getPlaylists(profile.id)
             .then(res => {
-                console.log('[Apple Music] Playlists:', res.data?.length || 0, res.data);
+                if (__DEV__) console.log('[Apple Music] Playlists count:', res.data?.length || 0);
                 setApplePlaylists(Array.isArray(res.data) ? res.data : []);
             })
             .catch(err => {
-                console.error('[Apple Music] Error fetching data:', err);
-                console.error('[Apple Music] Error details:', err.response?.data);
+                if (__DEV__) {
+                    console.error('[Apple Music] Error fetching data:', err);
+                    console.error('[Apple Music] Error details:', err.response?.data);
+                }
                 if (err.response?.data?.error) {
                     
                 }
