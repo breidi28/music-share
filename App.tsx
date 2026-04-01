@@ -3,11 +3,10 @@ import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import Toast, { ToastConfig, ToastProps } from 'react-native-toast-message';
+import Toast, { ToastConfig } from 'react-native-toast-message';
 import { View, Text } from 'react-native';
 import { useAuthStore } from './src/store/authStore';
 import AppNavigator from './src/navigation/AppNavigator';
-import { Analytics } from "@vercel/analytics/next";
 
 import './global.css';
 
@@ -43,9 +42,9 @@ const AppToast = ({ text1, text2, color }: { text1?: string; text2?: string; col
 );
 
 const toastConfig: ToastConfig = {
-  success: (props: ToastProps) => <AppToast text1={props.text1 ?? ''} text2={props.text2 ?? ''} color="#34C759" />,
-  error:   (props: ToastProps) => <AppToast text1={props.text1 ?? ''} text2={props.text2 ?? ''} color="#FF3B30" />,
-  info:    (props: ToastProps) => <AppToast text1={props.text1 ?? ''} text2={props.text2 ?? ''} color="#0A84FF" />,
+  success: (props: any) => <AppToast text1={props?.text1 ?? ''} text2={props?.text2 ?? ''} color="#34C759" />,
+  error:   (props: any) => <AppToast text1={props?.text1 ?? ''} text2={props?.text2 ?? ''} color="#FF3B30" />,
+  info:    (props: any) => <AppToast text1={props?.text1 ?? ''} text2={props?.text2 ?? ''} color="#0A84FF" />,
 };
 
 export default function App() {

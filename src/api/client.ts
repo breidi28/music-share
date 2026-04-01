@@ -2,6 +2,7 @@ import axios from 'axios';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../store/authStore';
 import { getAuthToken } from '../utils/tokenStorage';
+import Constants from 'expo-constants';
 
 // Allow suppressToast to be set per-request on Axios config
 declare module 'axios' {
@@ -15,12 +16,45 @@ declare module 'axios' {
 
 // Format: https://<your-service-name>.onrender.com/api
 const PROD_API_BASE_URL = 'https://music-share-b4r8.onrender.com/api';
-// For local development: Replace with your local machine's IP (e.g. 'http://192.168.1.5:5000/api')
+// Local fallback for emulators running on the same machine.
 const LOCAL_API_BASE_URL = 'http://localhost:5000/api';
+
+function resolveExpoHostIp(): string | null {
+    const candidates = [
+        (Constants as any)?.expoConfig?.hostUri,
+        (Constants as any)?.manifest2?.extra?.expoClient?.hostUri,
+        (Constants as any)?.manifest?.debuggerHost,
+    ];
+
+    for (const value of candidates) {
+        if (!value || typeof value !== 'string') continue;
+        const host = value.split(':')[0];
+        if (host) return host;
+    }
+    return null;
+}
+
+function resolveApiBaseUrl(): string {
+    const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+    if (envUrl) return envUrl;
+
+    if (!__DEV__) return PROD_API_BASE_URL;
+
+    const hostIp = resolveExpoHostIp();
+    if (hostIp) {
+        return `http://${hostIp}:5000/api`;
+    }
+
+    return LOCAL_API_BASE_URL;
+}
 
 // Toggle between LOCAL and PROD here
 // NOTE: Use local URL if you are running 'python app.py' locally.
-export const API_BASE_URL = __DEV__ ? LOCAL_API_BASE_URL : PROD_API_BASE_URL;
+export const API_BASE_URL = resolveApiBaseUrl();
+
+if (__DEV__) {
+    console.log('[API] Using base URL:', API_BASE_URL);
+}
 
 if (!__DEV__ && API_BASE_URL.startsWith('http://')) {
     throw new Error('Insecure API_BASE_URL in production: HTTPS is required.');

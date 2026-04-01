@@ -47,7 +47,8 @@
     },
     "plugins": [
       "expo-web-browser",
-      "expo-camera"
+      "expo-camera",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {
