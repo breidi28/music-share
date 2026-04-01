@@ -229,18 +229,29 @@ def _ensure_phase0_schema():
                     app.logger.warning(f"Migration statement failed: {stmt} - Error: {str(e)}")
             conn.commit()
 
-    # ONE-TIME RECOVERY: Promote breidi to Admin on Render
+    # Optional bootstrap flow for first admin account (disabled by default).
     try:
-        from werkzeug.security import generate_password_hash
-        target_user = User.query.filter((User.username == 'breidi') | (User.email == 'breidi@breidi.com')).first()
-        if target_user:
-            target_user.is_admin = True
-            # Set password to consistent one requested for initial entry
-            target_user.password_hash = generate_password_hash('breidibreidi1!_')
-            db.session.commit()
-            app.logger.info("RECOVERY: 'breidi' promoted and password reset.")
+        bootstrap_enabled = os.getenv('BOOTSTRAP_ADMIN_ON_STARTUP', 'false').lower() in ('true', '1', 'yes')
+        bootstrap_identifier = os.getenv('BOOTSTRAP_ADMIN_IDENTIFIER', '').strip().lower()
+        bootstrap_password = os.getenv('BOOTSTRAP_ADMIN_PASSWORD', '')
+
+        if bootstrap_enabled:
+            if not bootstrap_identifier:
+                app.logger.warning('BOOTSTRAP_ADMIN_ON_STARTUP is enabled but BOOTSTRAP_ADMIN_IDENTIFIER is missing.')
+            else:
+                target_user = User.query.filter(
+                    (User.username == bootstrap_identifier) | (User.email == bootstrap_identifier)
+                ).first()
+                if target_user:
+                    target_user.is_admin = True
+                    if bootstrap_password:
+                        target_user.password_hash = generate_password_hash(bootstrap_password)
+                    db.session.commit()
+                    app.logger.info('Bootstrap admin flow applied for configured account.')
+                else:
+                    app.logger.warning('Bootstrap admin identifier was not found in database.')
     except Exception as e:
-        app.logger.warning(f"Recovery anchor failed: {str(e)}")
+        app.logger.warning(f"Bootstrap admin flow failed: {str(e)}")
 
     app.logger.info('Phase-0 schema migrations completed.')
 
@@ -1109,7 +1120,13 @@ def login():
         if not data:
             return jsonify({'error': 'No data provided'}), 400
 
-        identifier = data.get('username', '').strip().lower()
+        # Backward-compatible identifier parsing for web/admin/mobile clients.
+        identifier = (
+            data.get('identifier', '')
+            or data.get('username', '')
+            or data.get('email', '')
+        )
+        identifier = identifier.strip().lower()
         password = data.get('password', '')
 
         if not identifier or not password:

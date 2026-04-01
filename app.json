@@ -29,7 +29,10 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "package": "com.breidi282.musicshare"
     },
@@ -51,6 +54,12 @@
         "projectId": "52398433-9eaf-48a6-a918-7699f0a22771"
       }
     },
-    "owner": "breidi282"
+    "owner": "breidi282",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/52398433-9eaf-48a6-a918-7699f0a22771"
+    }
   }
 }

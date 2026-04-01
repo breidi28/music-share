@@ -104,6 +104,11 @@ JWT_SECRET_KEY=your_jwt_secret_key_here
 DATABASE_PATH=instance/musicshare.db
 CORS_ORIGINS=exp://YOUR_IP:8081
 
+# Optional: one-time admin bootstrap (disabled by default)
+BOOTSTRAP_ADMIN_ON_STARTUP=false
+BOOTSTRAP_ADMIN_IDENTIFIER=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=change_me_now
+
 # Music Service API Credentials (optional)
 SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret

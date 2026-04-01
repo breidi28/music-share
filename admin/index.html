@@ -398,6 +398,14 @@
         // App Initialization
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
+
+            const passInput = document.getElementById('login-pass');
+            if (passInput) {
+                passInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') handleLogin();
+                });
+            }
+
             if (token) {
                 document.getElementById('login-overlay').classList.add('hidden');
                 refreshData();
@@ -417,21 +425,28 @@
 
         // Authentication
         async function handleLogin() {
-            const email = document.getElementById('login-email').value;
+            const identifier = document.getElementById('login-email').value.trim().toLowerCase();
             const password = document.getElementById('login-pass').value;
             const errorEl = document.getElementById('login-error');
+
+            errorEl.textContent = '';
+            if (!identifier || !password) {
+                errorEl.textContent = 'Please enter your username/email and password.';
+                return;
+            }
 
             try {
                 const res = await fetch(`${API_BASE}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ username: identifier, email: identifier, identifier, password })
                 });
 
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Login failed');
 
-                token = data.access_token;
+                token = data.token || data.access_token;
+                if (!token) throw new Error('Authentication token missing from server response.');
                 localStorage.setItem('admin_token', token);
                 
                 // Fetch stats to verify admin status
@@ -444,16 +459,30 @@
                     throw new Error('This account does not have administrative privileges.');
                 }
 
+                const meRes = await fetch(`${API_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const meData = await meRes.json();
+
+                if (!meRes.ok || !meData || !meData.is_admin) {
+                    logout(false);
+                    throw new Error('This account is not authorized for the admin dashboard.');
+                }
+
+                document.getElementById('admin-name').textContent = meData.display_name || meData.username || 'Administrator';
+                const nameSeed = (meData.display_name || meData.username || 'A').trim();
+                document.getElementById('admin-initial').textContent = nameSeed.charAt(0).toUpperCase();
+
                 document.getElementById('login-overlay').classList.add('hidden');
-                refreshData();
+                await refreshData();
             } catch (err) {
                 errorEl.textContent = err.message;
             }
         }
 
-        function logout() {
+        function logout(reload = true) {
             localStorage.removeItem('admin_token');
-            window.location.reload();
+            if (reload) window.location.reload();
         }
 
         // Data Fetching
@@ -464,13 +493,23 @@
                     fetch(`${API_BASE}/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } })
                 ]);
 
+                if (statsRes.status === 401 || statsRes.status === 403 || usersRes.status === 401 || usersRes.status === 403) {
+                    logout();
+                    return;
+                }
+
+                if (!statsRes.ok || !usersRes.ok) {
+                    const statsErr = await statsRes.json().catch(() => ({}));
+                    const usersErr = await usersRes.json().catch(() => ({}));
+                    throw new Error(statsErr.error || usersErr.error || 'Failed to load admin data');
+                }
+
                 const stats = await statsRes.json();
                 allUsers = await usersRes.json();
 
                 updateStats(stats);
                 updateTables();
             } catch (err) {
-                if (err.status === 401 || err.status === 403) logout();
                 console.error('Refresh error:', err);
             }
         }
