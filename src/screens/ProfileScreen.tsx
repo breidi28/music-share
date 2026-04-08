@@ -683,40 +683,36 @@ export default function ProfileScreen({ navigation, route }: any) {
 
     const renderTopNav = () => {
         return (
-        <BlurView
-            intensity={90}
-            tint="dark"
+        <View
             style={{ 
                 paddingTop: insets.top, 
-                position: 'absolute', 
-                top: 0, left: 0, right: 0, 
-                zIndex: 10,
-                borderBottomWidth: StyleSheet.hairlineWidth, 
+                backgroundColor: '#000',
+                borderBottomWidth: 0.5, 
                 borderBottomColor: 'rgba(255,255,255,0.1)' 
             }}
         >
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 44 }}>
-                {!isMe ? (
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4, flexDirection: 'row', alignItems: 'center', marginLeft: -8 }}>
-                        <Ionicons name="chevron-back" size={28} color={Colors.primary} />
-                        <Text style={{ color: Colors.primary, fontSize: 17, marginLeft: -4 }}>Back</Text>
-                    </TouchableOpacity>
-                ) : <View style={{ width: 60 }} />}
-
-                <Text style={{ color: 'white', fontWeight: '600', fontSize: 17, letterSpacing: -0.4 }}>
-                    {profile?.username || 'Profile'}
-                </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    {!isMe && (
+                        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4, marginRight: 8, marginLeft: -8 }}>
+                            <Ionicons name="chevron-back" size={32} color="#9ca3af" />
+                        </TouchableOpacity>
+                    )}
+                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 30, letterSpacing: -0.4 }} numberOfLines={1}>
+                        {profile?.username ? `@${profile.username}` : 'Profile'}
+                    </Text>
+                </View>
 
                 {isMe ? (
                     <TouchableOpacity 
                         onPress={() => navigation.navigate('Settings')} 
-                        style={{ padding: 4, width: 60 }}
+                        style={{ padding: 4 }}
                     >
-                        <Ionicons name="settings-outline" size={24} color={accentColor} style={{ alignSelf: 'flex-end' }} />
+                        <Ionicons name="settings-outline" size={24} color="#9ca3af" />
                     </TouchableOpacity>
-                ) : <View style={{ width: 60 }} />}
+                ) : <View style={{ width: 32 }} />}
             </View>
-        </BlurView>
+        </View>
         );
     };
 
@@ -728,7 +724,7 @@ export default function ProfileScreen({ navigation, route }: any) {
         const overlayBorder = 'rgba(255,255,255,0.12)';
         
         return (
-        <View style={{ paddingTop: insets.top + 60, zIndex: 10, paddingBottom: 10 }}>
+        <View style={{ paddingTop: 32, zIndex: 10, paddingBottom: 10 }}>
             <LinearGradient
                 colors={['rgba(0,0,0,0.8)', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.1)', 'transparent']}
                 start={{ x: 0.5, y: 0 }}

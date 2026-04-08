@@ -1,24 +1,15 @@
 /**
  * SettingsScreen Component
- * 
- * Comprehensive settings page for the music sharing app that manages:
- * - Account information and profile navigation
- * - Music service integrations (Spotify, YouTube Music, Apple Music, Tidal, Qobuz)
- * - Notification preferences
- * - Privacy settings
- * - App information and support
- * - Account actions (logout, delete)
- * 
- * Features:
- * - OAuth integration for Spotify and YouTube Music
- * - Real-time connection status for all music services
- * - Disconnect functionality for all services
- * - Settings persistence (notifications, privacy)
- * - Safe account deletion and logout
+ *
+ * Comprehensive settings page following Apple Human Interface Guidelines:
+ * - Grouped list layout with proper spacing
+ * - Clear visual hierarchy
+ * - Uncluttered interface with adequate touch targets (44px minimum)
+ * - iOS-style section headers and separators
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Switch, Platform, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, ScrollView, Alert, Platform, ActivityIndicator, Modal, TouchableOpacity, StyleSheet } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
@@ -32,92 +23,34 @@ import { spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, u
 import api from '../api/client';
 import { User } from '../types';
 
-// Complete auth session when returning from OAuth browser
+// New HIG-compliant UI components
+import { ListGroup, ListItem, ListHeader, ListFooter, Toggle, Button } from '../components/ui';
+
 WebBrowser.maybeCompleteAuthSession();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OAuth Configuration
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Spotify OAuth Client ID
- * Obtained from Spotify Developer Dashboard
- */
 const SPOTIFY_CLIENT_ID = 'c2276ecc29b14734a7dc8c857a72bd80';
-
-/**
- * Google OAuth Web Client ID
- * Used for YouTube Music authentication via Google OAuth
- * Obtained from Google Cloud Console
- */
 const GOOGLE_WEB_CLIENT_ID = '810258213827-0evata0ebfoj122j2hou1etjvcf5v84j.apps.googleusercontent.com';
+const DEEZER_APP_ID = '';
 
-/**
- * Deezer OAuth App ID
- * Obtained from Deezer Developers portal
- */
-const DEEZER_APP_ID = '';  // Add your Deezer App ID here
-
-/**
- * Spotify OAuth endpoints
- */
-const spotifyDiscovery = {
-    authorizationEndpoint: 'https://accounts.spotify.com/authorize',
-    tokenEndpoint: 'https://accounts.spotify.com/api/token',
-};
-
-/**
- * Redirect URI for Spotify OAuth
- * Uses custom scheme for deep linking back to the app
- */
 const SPOTIFY_REDIRECT_URI = 'https://music-share-b4r8.onrender.com/api/integrations/spotify/callback';
-
-/**
- * Redirect URI for YouTube Music OAuth
- * Uses Expo's auth proxy for handling OAuth redirects
- */
 const YOUTUBE_REDIRECT_URI = 'https://music-share-b4r8.onrender.com/api/integrations/youtube/callback';
-
-/**
- * Redirect URI for Deezer OAuth
- * Uses Expo's auth proxy for handling OAuth redirects
- */
 const DEEZER_REDIRECT_URI = 'https://music-share-b4r8.onrender.com/api/integrations/deezer/callback';
-
-/**
- * Deezer OAuth endpoints
- */
-const deezerDiscovery = {
-    authorizationEndpoint: 'https://connect.deezer.com/oauth/auth.php',
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Main Component
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default function SettingsScreen({ navigation }: any) {
     const insets = useSafeAreaInsets();
     const { user, logout } = useAuthStore();
 
-    // ───────────────────────────────────────────────────────────────────────
-    // State Management
-    // ───────────────────────────────────────────────────────────────────────
+    // Header styles that depend on insets
+    const headerStyles = {
+        paddingTop: insets.top,
+    };
 
-    /**
-     * User profile with music service connection status
-     * Fetched from backend to show real-time connection state
-     */
     const [profile, setProfile] = useState<User | null>(null);
-
-    /**
-     * Loading state for music service operations
-     * Shows spinner during OAuth flow and disconnect operations
-     */
     const [loadingServices, setLoadingServices] = useState(false);
-
-    /**
-     * Notification preferences synced with backend
-     */
     const [notifications, setNotifications] = useState({
         notify_new_post: true,
         notify_now_playing: false,
@@ -125,17 +58,11 @@ export default function SettingsScreen({ navigation }: any) {
         notify_mentions: true,
         notify_replies: true,
     });
-
-    /**
-     * Privacy settings (local state)
-     * TODO: Persist to backend when API endpoint is available
-     */
     const [privacy, setPrivacy] = useState({
-        profilePublic: true,          // Allow non-followers to see profile
-        showListeningActivity: true,  // Show real-time listening on profile
-        showCollection: true,         // Show music collection to others
+        profilePublic: true,
+        showListeningActivity: true,
+        showCollection: true,
     });
-
     const [confirmDialog, setConfirmDialog] = useState<{
         title: string;
         message: string;
@@ -153,36 +80,10 @@ export default function SettingsScreen({ navigation }: any) {
         }
     };
 
-    // ───────────────────────────────────────────────────────────────────────
-    // OAuth Configuration Hooks
-    // ───────────────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    // OAuth Handlers
+    // ═══════════════════════════════════════════════════════════════════════
 
-    // ───────────────────────────────────────────────────────────────────────
-    // Effects
-    // ───────────────────────────────────────────────────────────────────────
-    
-    /**
-     * Fetch user profile on mount and when user ID changes
-     * Ensures we have latest connection status for all music services
-     */
-    useEffect(() => {
-        const fetchProfile = async () => {
-            if (!user?.id) return;
-            try {
-                const res = await usersApi.getUser(user.id);
-                setProfile(res.data);
-            } catch (error) {
-                console.error('Failed to fetch profile:', error);
-            }
-        };
-        fetchProfile();
-    }, [user?.id]);
-
-
-    /**
-     * Handle Spotify Connection Plan
-     * Manually construct URL to 'forget expo' and use direct Render redirect
-     */
     const handleConnectSpotify = async () => {
         if (!user?.id) return;
         setLoadingServices(true);
@@ -199,11 +100,10 @@ export default function SettingsScreen({ navigation }: any) {
             ].join(' ');
 
             const authUrl = `https://accounts.spotify.com/authorize?client_id=${SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(SPOTIFY_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&state=${user.id}`;
-            
+
             const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
-            
+
             if (result.type === 'success') {
-                // If the backend handled it, just refresh profile
                 const res = await usersApi.getUser(user.id);
                 setProfile(res.data);
                 Toast.show({ type: 'success', text1: 'Spotify Connected!' });
@@ -216,16 +116,10 @@ export default function SettingsScreen({ navigation }: any) {
         }
     };
 
-    /**
-     * Handle YouTube Music Connection Plan
-     * Fetches a signed state token from the backend then opens Google OAuth.
-     * The state token is HMAC-signed so the callback can validate it (CSRF protection).
-     */
     const handleConnectYouTube = async () => {
         if (!user?.id) return;
         setLoadingServices(true);
         try {
-            // Get a server-signed state token — this is what the backend validates on callback
             const stateRes = await api.get('/auth/oauth-state');
             const signedState = stateRes.data.state;
 
@@ -247,7 +141,6 @@ export default function SettingsScreen({ navigation }: any) {
             const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
 
             if (result.type === 'success') {
-                // Backend handled the callback and stored tokens — refresh profile
                 const res = await usersApi.getUser(user.id);
                 setProfile(res.data);
                 Toast.show({ type: 'success', text1: 'YouTube Music Connected!' });
@@ -259,9 +152,6 @@ export default function SettingsScreen({ navigation }: any) {
         }
     };
 
-    /**
-     * Handle Deezer Connection
-     */
     const handleConnectDeezer = async () => {
         if (!user?.id) return;
         setLoadingServices(true);
@@ -270,7 +160,7 @@ export default function SettingsScreen({ navigation }: any) {
             const authUrl = `https://connect.deezer.com/oauth/auth.php?app_id=${DEEZER_APP_ID}&redirect_uri=${encodeURIComponent(DEEZER_REDIRECT_URI)}&perms=${encodeURIComponent(perms)}&state=${user.id}`;
 
             const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
-            
+
             if (result.type === 'success') {
                 const res = await usersApi.getUser(user.id);
                 setProfile(res.data);
@@ -283,16 +173,27 @@ export default function SettingsScreen({ navigation }: any) {
         }
     };
 
-    /**
-     * Handle Apple Music Connection (MusicKit usually handles this better on device)
-     */
     const handleConnectAppleMusic = () => {
         Toast.show({ type: 'info', text1: 'Apple Music', text2: 'Integration coming soon!' });
     };
 
-    /**
-     * Load notification settings from backend
-     */
+    // ═══════════════════════════════════════════════════════════════════════
+    // Effects
+    // ═══════════════════════════════════════════════════════════════════════
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            if (!user?.id) return;
+            try {
+                const res = await usersApi.getUser(user.id);
+                setProfile(res.data);
+            } catch (error) {
+                console.error('Failed to fetch profile:', error);
+            }
+        };
+        fetchProfile();
+    }, [user?.id]);
+
     useEffect(() => {
         const loadNotifications = async () => {
             try {
@@ -318,10 +219,6 @@ export default function SettingsScreen({ navigation }: any) {
         }
     };
 
-    /**
-     * Load privacy settings from AsyncStorage
-     * Ensures settings persist across app sessions
-     */
     useEffect(() => {
         const loadPrivacy = async () => {
             try {
@@ -336,9 +233,6 @@ export default function SettingsScreen({ navigation }: any) {
         loadPrivacy();
     }, []);
 
-    /**
-     * Save privacy settings to AsyncStorage whenever they change
-     */
     useEffect(() => {
         const savePrivacy = async () => {
             try {
@@ -350,68 +244,10 @@ export default function SettingsScreen({ navigation }: any) {
         savePrivacy();
     }, [privacy]);
 
-    // ───────────────────────────────────────────────────────────────────────
-    // Music Service Handlers
-    // ───────────────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    // Disconnect Handlers
+    // ═══════════════════════════════════════════════════════════════════════
 
-    /**
-     * Handle Spotify OAuth callback
-     * Exchanges authorization code for access token via backend
-     * @param code - Authorization code from Spotify
-     */
-    const handleSpotifyCallback = async (code: string) => {
-        setLoadingServices(true);
-        try {
-            const res = await spotifyApi.callback(code, SPOTIFY_REDIRECT_URI);
-            setProfile(res.data.user);
-            Toast.show({ type: 'success', text1: 'Spotify Connected!' });
-        } catch (error: any) {
-            Toast.show({ type: 'error', text1: 'Error', text2: error.response?.data?.error || 'Failed to connect Spotify' });
-        } finally {
-            setLoadingServices(false);
-        }
-    };
-
-    /**
-     * Handle YouTube Music OAuth callback
-     * Exchanges authorization code for access token via backend
-     * @param code - Authorization code from Google
-     */
-    const handleYouTubeCallback = async (code: string) => {
-        setLoadingServices(true);
-        try {
-            const res = await youtubeApi.callback(code, YOUTUBE_REDIRECT_URI);
-            setProfile(res.data.user);
-            Toast.show({ type: 'success', text1: 'YouTube Music Connected!' });
-        } catch (error: any) {
-            Toast.show({ type: 'error', text1: 'Error', text2: error.response?.data?.error || 'Failed to connect YouTube Music' });
-        } finally {
-            setLoadingServices(false);
-        }
-    };
-
-    /**
-     * Handle Deezer OAuth callback
-     * Exchanges authorization code for access token via backend
-     * @param code - Authorization code from Deezer
-     */
-    const handleDeezerCallback = async (code: string) => {
-        setLoadingServices(true);
-        try {
-            const res = await deezerApi.callback(code);
-            setProfile(res.data.user);
-            Toast.show({ type: 'success', text1: 'Deezer Connected!' });
-        } catch (error: any) {
-            Toast.show({ type: 'error', text1: 'Error', text2: error.response?.data?.error || 'Failed to connect Deezer' });
-        } finally {
-            setLoadingServices(false);
-        }
-    };
-
-    /**
-     * Disconnect Spotify account
-     * Shows confirmation dialog and removes Spotify access from backend
-     */
     const handleDisconnectSpotify = () => {
         showConfirm('Disconnect Spotify', 'Remove Spotify link from your account?', async () => {
             try {
@@ -422,10 +258,6 @@ export default function SettingsScreen({ navigation }: any) {
         });
     };
 
-    /**
-     * Disconnect YouTube Music account
-     * Shows confirmation dialog and removes YouTube access from backend
-     */
     const handleDisconnectYouTube = () => {
         showConfirm('Disconnect YouTube Music', 'Remove YouTube Music link from your account?', async () => {
             try {
@@ -436,10 +268,6 @@ export default function SettingsScreen({ navigation }: any) {
         });
     };
 
-    /**
-     * Disconnect Apple Music account
-     * Shows confirmation dialog and removes Apple Music access from backend
-     */
     const handleDisconnectAppleMusic = () => {
         showConfirm('Disconnect Apple Music', 'Remove Apple Music link from your account?', async () => {
             try {
@@ -450,10 +278,6 @@ export default function SettingsScreen({ navigation }: any) {
         });
     };
 
-    /**
-     * Disconnect Tidal account
-     * Shows confirmation dialog and removes Tidal access from backend
-     */
     const handleDisconnectTidal = () => {
         showConfirm('Disconnect Tidal', 'Remove Tidal link from your account?', async () => {
             try {
@@ -464,10 +288,6 @@ export default function SettingsScreen({ navigation }: any) {
         });
     };
 
-    /**
-     * Disconnect Qobuz account
-     * Shows confirmation dialog and removes Qobuz access from backend
-     */
     const handleDisconnectQobuz = () => {
         showConfirm('Disconnect Qobuz', 'Remove Qobuz link from your account?', async () => {
             try {
@@ -478,10 +298,6 @@ export default function SettingsScreen({ navigation }: any) {
         });
     };
 
-    /**
-     * Disconnect Deezer account
-     * Shows confirmation dialog and removes Deezer access from backend
-     */
     const handleDisconnectDeezer = () => {
         showConfirm('Disconnect Deezer', 'Remove Deezer link from your account?', async () => {
             try {
@@ -492,512 +308,323 @@ export default function SettingsScreen({ navigation }: any) {
         });
     };
 
-    // ───────────────────────────────────────────────────────────────────────
-    // Account Action Handlers
-    // ───────────────────────────────────────────────────────────────────────
-
-    /**
-     * Handle user logout
-     * Shows confirmation dialog, clears auth state, and navigates to login
-     */
     const handleLogout = () => {
         showConfirm('Logout', 'Are you sure you want to logout?', () => {
             logout();
         });
     };
 
-
-    /**
-     * Handle account deletion
-     * Shows warning dialog about permanent data loss
-     * TODO: Implement backend API call for account deletion
-     */
     const handleDeleteAccount = () => {
         showConfirm('Delete Account', 'This action cannot be undone. All your data will be permanently deleted.', () => {
-            // TODO: Implement account deletion API call
             Toast.show({ type: 'info', text1: 'Not Implemented', text2: 'Account deletion will be available soon' });
         });
     };
 
-    // ───────────────────────────────────────────────────────────────────────
-    // UI Components
-    // ───────────────────────────────────────────────────────────────────────
-
-    /**
-     * SettingSection Component
-     * Reusable section container with title and grouped settings
-     * @param title - Section title displayed above the container
-     * @param children - Setting rows to display in the section
-     */
-    const SettingSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
-        <View style={{ marginBottom: 32 }}>
-            <Text style={{
-                color: HIG.secondaryText,
-                fontSize: 13,
-                fontWeight: '600',
-                textTransform: 'uppercase',
-                letterSpacing: 0.8,
-                marginBottom: 12,
-                paddingHorizontal: 16,
-            }}>
-                {title}
-            </Text>
-            <View style={{ backgroundColor: HIG.groupedCard, borderRadius: HIG.sectionCornerRadius, marginHorizontal: 16 }}>
-                {children}
-            </View>
-        </View>
-    );
-
-    /**
-     * SettingRow Component
-     * Reusable row component for individual settings
-     * Supports different types: navigation, switch, display-only
-     * 
-     * @param icon - Ionicon name to display
-     * @param label - Setting label text
-     * @param value - Optional value to display (for display-only rows)
-     * @param onPress - Optional press handler (for navigation rows)
-     * @param showArrow - Whether to show forward arrow (default: true)
-     * @param isSwitch - Whether this is a toggle switch row
-     * @param switchValue - Current switch value (for switch rows)
-     * @param onSwitchChange - Switch change handler (for switch rows)
-     * @param isLast - Whether this is the last row (removes bottom border)
-     * @param destructive - Whether to use destructive styling (red text)
-     */
-    const SettingRow = ({
-        icon,
-        label,
-        value,
-        onPress,
-        showArrow = true,
-        isSwitch = false,
-        switchValue,
-        onSwitchChange,
-        isLast = false,
-        destructive = false,
-    }: any) => {
-        const rowStyle = {
-            flexDirection: 'row' as const,
-            alignItems: 'center' as const,
-            paddingVertical: 14,
-            paddingHorizontal: 16,
-            minHeight: HIG.rowMinHeight,
-            borderBottomWidth: isLast ? 0 : HIG.separatorThickness,
-            borderBottomColor: HIG.separator,
-        };
-
-        const content = (
-            <>
-                <Ionicons name={icon} size={22} color={destructive ? Colors.primary : '#9ca3af'} />
-                <Text style={{
-                    color: destructive ? Colors.primary : 'white',
-                    fontSize: 16,
-                    marginLeft: 12,
-                    flex: 1,
-                }}>
-                    {label}
-                </Text>
-                {isSwitch && (
-                    <Switch
-                        value={switchValue}
-                        onValueChange={onSwitchChange}
-                        trackColor={{ false: '#374151', true: Colors.primary }}
-                        thumbColor={Platform.OS === 'ios' ? '#fff' : switchValue ? '#fff' : '#d1d5db'}
-                    />
-                )}
-                {!isSwitch && value && (
-                    <Text style={{ color: '#6b7280', fontSize: 15, marginRight: 8 }}>{value}</Text>
-                )}
-                {!isSwitch && showArrow && (
-                    <Ionicons name="chevron-forward" size={20} color="#4b5563" />
-                )}
-            </>
-        );
-
-        // Use View for switch rows, TouchableOpacity for clickable rows
-        if (isSwitch) {
-            return <View style={rowStyle}>{content}</View>;
-        }
-
-        return (
-            <TouchableOpacity onPress={onPress} style={rowStyle} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
-                {content}
-            </TouchableOpacity>
-        );
-    };
-
-    /**
-     * MusicServiceRow Component
-     * Specialized row component for music service connections
-     * Shows connection status and connect/disconnect buttons
-     * 
-     * @param icon - FontAwesome5 icon name for the service
-     * @param label - Service name (e.g., "Spotify", "YouTube Music")
-     * @param connected - Whether service is currently connected
-     * @param onConnect - Handler for connect button press
-     * @param onDisconnect - Handler for disconnect button press
-     * @param isLast - Whether this is the last row (removes bottom border)
-     * @param color - Brand color for the service
-     * @param loading - Whether OAuth flow is in progress
-     */
-    const MusicServiceRow = ({
-        icon,
-        label,
-        connected,
-        onConnect,
-        onDisconnect,
-        isLast = false,
-        color = '#9ca3af',
-        loading = false,
-    }: any) => (
-        <View
-            style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 14,
-                paddingHorizontal: 16,
-                minHeight: HIG.rowMinHeight,
-                borderBottomWidth: isLast ? 0 : HIG.separatorThickness,
-                borderBottomColor: HIG.separator,
-            }}
-        >
-            <View
-                style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: connected ? `${color}1F` : 'rgba(255,255,255,0.06)',
-                    borderWidth: 1,
-                    borderColor: connected ? `${color}55` : 'rgba(255,255,255,0.08)',
-                }}
-            >
-                <FontAwesome5 name={icon} size={16} color={connected ? color : '#9ca3af'} />
-            </View>
-
-            <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
-                    {label}
-                </Text>
-                <Text style={{ color: connected ? '#86efac' : '#6b7280', fontSize: 12, marginTop: 2 }}>
-                    {connected ? 'Connected' : 'Not connected'}
-                </Text>
-            </View>
-
-            {loading ? (
-                <ActivityIndicator size="small" color={Colors.primary} />
-            ) : connected ? (
-                <TouchableOpacity
-                    onPress={onDisconnect}
-                    style={{
-                        backgroundColor: 'rgba(255,255,255,0.06)',
-                        borderRadius: 12,
-                        paddingHorizontal: 14,
-                        paddingVertical: 8,
-                        borderWidth: 1,
-                        borderColor: 'rgba(255,255,255,0.12)',
-                        minHeight: HIG.touchTargetMin,
-                        minWidth: 108,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                    }}
-                >
-                    <Text style={{ color: '#fca5a5', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 }}>Disconnect</Text>
-                </TouchableOpacity>
-            ) : (
-                <TouchableOpacity
-                    onPress={onConnect}
-                    style={{
-                        backgroundColor: 'rgba(255,255,255,0.06)',
-                        borderRadius: 12,
-                        paddingHorizontal: 14,
-                        paddingVertical: 8,
-                        borderWidth: 1,
-                        borderColor: 'rgba(255,255,255,0.12)',
-                        minHeight: HIG.touchTargetMin,
-                        minWidth: 108,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                    }}
-                >
-                    <Text style={{ color: Colors.primary, fontSize: 13, fontWeight: '700', letterSpacing: 0.2 }}>Connect</Text>
-                </TouchableOpacity>
-            )}
-        </View>
-    );
-
-    // ───────────────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
     // Render
-    // ───────────────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
 
     return (
-        <View style={{ flex: 1, backgroundColor: '#000' }}>
-            {/* ═══════════════════════════════════════════════════════════
-                Header - Back button and page title
-                ═══════════════════════════════════════════════════════════ */}
-            <View
-                style={{
-                    paddingTop: insets.top,
-                    backgroundColor: UtilityScreen.header.backgroundColor,
-                    borderBottomWidth: UtilityScreen.header.borderBottomWidth,
-                    borderBottomColor: UtilityScreen.header.borderBottomColor,
-                }}
-            >
-                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: UtilityScreen.header.horizontalPadding, paddingVertical: UtilityScreen.header.verticalPadding }}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: UtilityScreen.header.backButtonMarginRight, minWidth: HIG.touchTargetMin, minHeight: HIG.touchTargetMin, justifyContent: 'center' }}>
-                        <Ionicons name="chevron-back" size={UtilityScreen.header.backIconSize} color="white" />
+        <View style={styles.container}>
+            {/* Header */}
+            <View style={[styles.header, headerStyles]}>
+                <View style={styles.headerContent}>
+                    <TouchableOpacity
+                        onPress={() => navigation.goBack()}
+                        style={styles.backButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                        <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
                     </TouchableOpacity>
-                    <Text style={{ fontSize: UtilityScreen.header.titleSize, fontWeight: UtilityScreen.header.titleWeight, color: 'white', letterSpacing: UtilityScreen.header.titleLetterSpacing, flex: 1 }}>
-                        Settings
-                    </Text>
+                    <Text style={styles.headerTitle}>Settings</Text>
                 </View>
             </View>
 
             <ScrollView
-                contentContainerStyle={{
-                    paddingTop: UtilityScreen.content.topPadding,
-                    paddingBottom: UtilityScreen.content.bottomPadding,
-                }}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
             >
-                {/* ═══════════════════════════════════════════════════════════
-                    Account Section - Profile and user info
-                    ═══════════════════════════════════════════════════════════ */}
-                <SettingSection title="Account">
-                    <SettingRow
+                {/* Account Section */}
+                <ListHeader title="Account" />
+                <ListGroup>
+                    <ListItem
+                        title="Edit Profile"
                         icon="person-outline"
-                        label="Edit Profile"
+                        iconColor={Colors.primary}
+                        chevron
                         onPress={() => navigation.navigate('EditProfile')}
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Username"
                         icon="at-outline"
-                        label="Username"
+                        iconColor={Colors.primary}
                         value={user?.username}
-                        showArrow={false}
-                        isLast
                     />
-                </SettingSection>
+                </ListGroup>
+                <ListFooter title="Manage your profile information and username" />
 
-                <SettingSection title="Music Services">
+                {/* Music Services Section */}
+                <ListHeader title="Music Services" />
+                <ListGroup>
                     <MusicServiceRow
                         icon="spotify"
                         label="Spotify"
-                        connected={profile?.has_spotify_linked}
+                        connected={!!profile?.has_spotify_linked}
                         onConnect={handleConnectSpotify}
                         onDisconnect={handleDisconnectSpotify}
                         color="#1DB954"
                         loading={loadingServices}
+                        iconFamily="FontAwesome5"
                     />
                     <MusicServiceRow
                         icon="youtube"
                         label="YouTube Music"
-                        connected={profile?.has_youtube_linked}
+                        connected={!!profile?.has_youtube_linked}
                         onConnect={handleConnectYouTube}
                         onDisconnect={handleDisconnectYouTube}
                         color="#FF0000"
                         loading={loadingServices}
+                        iconFamily="FontAwesome5"
                     />
                     <MusicServiceRow
-                        icon="apple"
+                        icon="logo-apple"
                         label="Apple Music"
-                        connected={profile?.has_apple_music_linked}
+                        connected={!!profile?.has_apple_music_linked}
                         onConnect={handleConnectAppleMusic}
                         onDisconnect={handleDisconnectAppleMusic}
                         color="#FC3A6E"
                         loading={loadingServices}
                     />
                     <MusicServiceRow
-                        icon="music"
+                        icon="musical-notes"
                         label="Tidal"
-                        connected={profile?.has_tidal_linked}
+                        connected={!!profile?.has_tidal_linked}
                         onConnect={() => Toast.show({ type: 'info', text1: 'Tidal', text2: 'Backend API credentials needed.' })}
                         onDisconnect={handleDisconnectTidal}
                         color="#00B0FF"
                         loading={loadingServices}
                     />
                     <MusicServiceRow
-                        icon="database"
+                        icon="diamond-outline"
                         label="Qobuz"
-                        connected={profile?.has_qobuz_linked}
+                        connected={!!profile?.has_qobuz_linked}
                         onConnect={() => Toast.show({ type: 'info', text1: 'Qobuz', text2: 'Backend API credentials needed.' })}
                         onDisconnect={handleDisconnectQobuz}
                         color="#2196F3"
                         loading={loadingServices}
                     />
                     <MusicServiceRow
-                        icon="music"
+                        icon="musical-notes"
                         label="Deezer"
-                        connected={profile?.has_deezer_linked}
+                        connected={!!profile?.has_deezer_linked}
                         onConnect={handleConnectDeezer}
                         onDisconnect={handleDisconnectDeezer}
                         color="#FF0092"
                         loading={loadingServices}
-                        isLast
                     />
-                </SettingSection>
+                </ListGroup>
+                <ListFooter title="Connect your music streaming services" />
 
-                {/* ═══════════════════════════════════════════════════════════
-                    Notifications Section - Manage push notification preferences
-                    Synced with backend notification preference settings
-                    ═══════════════════════════════════════════════════════════ */}
-                <SettingSection title="Notifications">
-                    <SettingRow
+                {/* Notifications Section */}
+                <ListHeader title="Notifications" />
+                <ListGroup>
+                    <ListItem
+                        title="New Posts"
+                        subtitle="When friends share new music"
                         icon="document-text-outline"
-                        label="New Posts"
-                        isSwitch
-                        switchValue={notifications.notify_new_post}
-                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_new_post', v)}
+                        iconColor={HIG.systemColors.systemBlue}
+                        rightElement={
+                            <Toggle
+                                value={notifications.notify_new_post}
+                                onValueChange={(v) => updateNotificationPref('notify_new_post', v)}
+                            />
+                        }
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Now Playing"
+                        subtitle="When friends start playing music"
                         icon="musical-notes-outline"
-                        label="Now Playing"
-                        isSwitch
-                        switchValue={notifications.notify_now_playing}
-                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_now_playing', v)}
+                        iconColor={HIG.systemColors.systemPink}
+                        rightElement={
+                            <Toggle
+                                value={notifications.notify_now_playing}
+                                onValueChange={(v) => updateNotificationPref('notify_now_playing', v)}
+                            />
+                        }
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Collection Adds"
+                        subtitle="When items are added to collection"
                         icon="albums-outline"
-                        label="Collection Adds"
-                        isSwitch
-                        switchValue={notifications.notify_collection_add}
-                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_collection_add', v)}
+                        iconColor={HIG.systemColors.systemPurple}
+                        rightElement={
+                            <Toggle
+                                value={notifications.notify_collection_add}
+                                onValueChange={(v) => updateNotificationPref('notify_collection_add', v)}
+                            />
+                        }
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Mentions"
+                        subtitle="When someone mentions you"
                         icon="at-outline"
-                        label="Mentions"
-                        isSwitch
-                        switchValue={notifications.notify_mentions}
-                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_mentions', v)}
+                        iconColor={HIG.systemColors.systemOrange}
+                        rightElement={
+                            <Toggle
+                                value={notifications.notify_mentions}
+                                onValueChange={(v) => updateNotificationPref('notify_mentions', v)}
+                            />
+                        }
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Replies"
+                        subtitle="When someone replies to you"
                         icon="chatbubble-outline"
-                        label="Replies"
-                        isSwitch
-                        switchValue={notifications.notify_replies}
-                        onSwitchChange={(v: boolean) => updateNotificationPref('notify_replies', v)}
-                        isLast
+                        iconColor={HIG.systemColors.systemGreen}
+                        rightElement={
+                            <Toggle
+                                value={notifications.notify_replies}
+                                onValueChange={(v) => updateNotificationPref('notify_replies', v)}
+                            />
+                        }
                     />
-                </SettingSection>
+                </ListGroup>
+                <ListFooter title="Choose which notifications you want to receive" />
 
-                {/* ═══════════════════════════════════════════════════════════
-                    Privacy Section - Control visibility and data sharing
-                    Note: Settings are currently local only (not persisted to backend)
-                    ═══════════════════════════════════════════════════════════ */}
-                <SettingSection title="Privacy">
-                    <SettingRow
+                {/* Privacy Section */}
+                <ListHeader title="Privacy" />
+                <ListGroup>
+                    <ListItem
+                        title="Public Profile"
+                        subtitle="Allow non-followers to see your profile"
                         icon="eye-outline"
-                        label="Public Profile"
-                        isSwitch
-                        switchValue={privacy.profilePublic}
-                        onSwitchChange={(v: boolean) => setPrivacy({ ...privacy, profilePublic: v })}
+                        iconColor={HIG.systemColors.systemTeal}
+                        rightElement={
+                            <Toggle
+                                value={privacy.profilePublic}
+                                onValueChange={(v) => setPrivacy({ ...privacy, profilePublic: v })}
+                            />
+                        }
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Show Listening Activity"
+                        subtitle="Show real-time listening on your profile"
                         icon="headset-outline"
-                        label="Show Listening Activity"
-                        isSwitch
-                        switchValue={privacy.showListeningActivity}
-                        onSwitchChange={(v: boolean) => setPrivacy({ ...privacy, showListeningActivity: v })}
+                        iconColor={HIG.systemColors.systemIndigo}
+                        rightElement={
+                            <Toggle
+                                value={privacy.showListeningActivity}
+                                onValueChange={(v) => setPrivacy({ ...privacy, showListeningActivity: v })}
+                            />
+                        }
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Show Collection"
+                        subtitle="Show your music collection to others"
                         icon="albums-outline"
-                        label="Show Collection"
-                        isSwitch
-                        switchValue={privacy.showCollection}
-                        onSwitchChange={(v: boolean) => setPrivacy({ ...privacy, showCollection: v })}
-                        isLast
+                        iconColor={HIG.systemColors.systemBlue}
+                        rightElement={
+                            <Toggle
+                                value={privacy.showCollection}
+                                onValueChange={(v) => setPrivacy({ ...privacy, showCollection: v })}
+                            />
+                        }
                     />
-                </SettingSection>
+                </ListGroup>
+                <ListFooter title="Control what others can see on your profile" />
 
-                {/* ═══════════════════════════════════════════════════════════
-                    About Section - App information and legal
-                    ═══════════════════════════════════════════════════════════ */}
-                <SettingSection title="About">
-                    <SettingRow
+                {/* About Section */}
+                <ListHeader title="About" />
+                <ListGroup>
+                    <ListItem
+                        title="About music share"
+                        subtitle="Version 1.0.0"
                         icon="information-circle-outline"
-                        label="About music share"
-                        onPress={() => Toast.show({ type: 'info', text1: 'Music Share', text2: 'Version 1.0.0 - A social music sharing platform.' })}
+                        iconColor={HIG.systemColors.systemGray}
+                        onPress={() => Toast.show({ type: 'info', text1: 'Music Share', text2: 'A social music sharing platform.' })}
+                        chevron
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Changelog"
                         icon="sparkles-outline"
-                        label="Changelog"
+                        iconColor={HIG.systemColors.systemYellow}
                         onPress={() => navigation.navigate('Changelog')}
+                        chevron
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Weekly Recap"
                         icon="stats-chart-outline"
-                        label="Weekly Recap"
+                        iconColor={HIG.systemColors.systemGreen}
                         onPress={() => navigation.navigate('WeeklyRecap')}
+                        chevron
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Terms of Service"
                         icon="document-text-outline"
-                        label="Terms of Service"
+                        iconColor={HIG.systemColors.systemGray}
                         onPress={() => navigation.navigate('Terms')}
+                        chevron
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Privacy Policy"
                         icon="shield-checkmark-outline"
-                        label="Privacy Policy"
+                        iconColor={HIG.systemColors.systemGreen}
                         onPress={() => navigation.navigate('PrivacyPolicy')}
+                        chevron
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Help & Support"
                         icon="help-circle-outline"
-                        label="Help & Support"
+                        iconColor={HIG.systemColors.systemBlue}
                         onPress={() => navigation.navigate('HelpSupport')}
-                        isLast
+                        chevron
                     />
-                </SettingSection>
+                </ListGroup>
 
-                {/* ═══════════════════════════════════════════════════════════
-                    Account Actions - Destructive operations (logout, delete)
-                    ═══════════════════════════════════════════════════════════ */}
-                <SettingSection title="Account Actions">
-                    <SettingRow
+                {/* Account Actions - Destructive */}
+                <ListHeader title="Account Actions" />
+                <ListGroup>
+                    <ListItem
+                        title="Logout"
                         icon="log-out-outline"
-                        label="Logout"
+                        iconColor={HIG.systemColors.systemRed}
+                        destructive
                         onPress={handleLogout}
-                        showArrow={false}
-                        destructive
                     />
-                    <SettingRow
+                    <ListItem
+                        title="Delete Account"
                         icon="trash-outline"
-                        label="Delete Account"
-                        onPress={handleDeleteAccount}
-                        showArrow={false}
+                        iconColor={HIG.systemColors.systemRed}
                         destructive
-                        isLast
+                        onPress={handleDeleteAccount}
                     />
-                </SettingSection>
+                </ListGroup>
+                <ListFooter title="Logging out will require you to sign in again. Deleting your account is permanent." />
 
                 {/* Footer */}
-                <View style={{ alignItems: 'center', marginTop: 24, paddingHorizontal: 32 }}>
-                    <Text style={{ color: '#4b5563', fontSize: 13, textAlign: 'center' }}>
-                        music share • Version 1.0.0
-                    </Text>
-                    <Text style={{ color: '#374151', fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-                        Made with ❤️ for music lovers
-                    </Text>
+                <View style={styles.footer}>
+                    <Text style={styles.footerText}>music share • Version 1.0.0</Text>
+                    <Text style={styles.footerSubtext}>Made with ❤️ for music lovers</Text>
                 </View>
             </ScrollView>
 
-            {/* Web-compatible confirmation dialog — replaces Alert.alert which is blocked on web */}
+            {/* Web-compatible confirmation dialog */}
             <Modal
                 visible={!!confirmDialog}
                 transparent
                 animationType="fade"
                 onRequestClose={() => setConfirmDialog(null)}
             >
-                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-                    <View style={{ backgroundColor: '#1C1C1E', borderRadius: 16, padding: 24, width: '100%', maxWidth: 340 }}>
-                        <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600', marginBottom: 8 }}>
-                            {confirmDialog?.title}
-                        </Text>
-                        <Text style={{ color: '#8E8E93', fontSize: 14, lineHeight: 20, marginBottom: 24 }}>
-                            {confirmDialog?.message}
-                        </Text>
-                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>{confirmDialog?.title}</Text>
+                        <Text style={styles.modalMessage}>{confirmDialog?.message}</Text>
+                        <View style={styles.modalButtons}>
                             <TouchableOpacity
                                 onPress={() => setConfirmDialog(null)}
-                                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#2C2C2E', alignItems: 'center' }}
+                                style={styles.modalButtonCancel}
                             >
-                                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Cancel</Text>
+                                <Text style={styles.modalButtonText}>Cancel</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={() => {
@@ -1005,9 +632,9 @@ export default function SettingsScreen({ navigation }: any) {
                                     setConfirmDialog(null);
                                     action?.();
                                 }}
-                                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#FF3B30', alignItems: 'center' }}
+                                style={styles.modalButtonConfirm}
                             >
-                                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Confirm</Text>
+                                <Text style={styles.modalButtonText}>Confirm</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -1016,3 +643,209 @@ export default function SettingsScreen({ navigation }: any) {
         </View>
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MusicServiceRow Component
+// ═══════════════════════════════════════════════════════════════════════════
+
+function MusicServiceRow({
+    icon,
+    label,
+    connected,
+    onConnect,
+    onDisconnect,
+    color = '#9ca3af',
+    loading = false,
+    iconFamily = 'Ionicons',
+}: {
+    icon: string;
+    label: string;
+    connected: boolean;
+    onConnect: () => void;
+    onDisconnect: () => void;
+    color: string;
+    loading: boolean;
+    iconFamily?: 'Ionicons' | 'FontAwesome5';
+}) {
+    return (
+        <View style={styles.musicServiceRow}>
+            <View
+                style={[
+                    styles.serviceIconContainer,
+                    {
+                        backgroundColor: connected ? `${color}1F` : 'rgba(255,255,255,0.06)',
+                        borderColor: connected ? `${color}55` : 'rgba(255,255,255,0.08)',
+                    },
+                ]}
+            >
+                {iconFamily === 'FontAwesome5' ? (
+                    <FontAwesome5 name={icon} size={16} color={connected ? color : '#9ca3af'} />
+                ) : (
+                    <Ionicons name={icon as any} size={20} color={connected ? color : '#9ca3af'} />
+                )}
+            </View>
+
+            <View style={styles.serviceInfo}>
+                <Text style={styles.serviceLabel}>{label}</Text>
+                <Text style={[styles.serviceStatus, connected ? styles.connectedText : styles.disconnectedText]}>
+                    {connected ? 'Connected' : 'Not connected'}
+                </Text>
+            </View>
+
+            {loading ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+                <Button
+                    title={connected ? 'Disconnect' : 'Connect'}
+                    onPress={connected ? onDisconnect : onConnect}
+                    variant={connected ? 'destructive' : 'primary'}
+                    size="small"
+                />
+            )}
+        </View>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Styles
+// ═══════════════════════════════════════════════════════════════════════════
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#000',
+    },
+    header: {
+        backgroundColor: '#000',
+        borderBottomWidth: 0.5,
+        borderBottomColor: 'rgba(255,255,255,0.1)',
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+    },
+    backButton: {
+        minWidth: 44,
+        minHeight: 44,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 8,
+        marginLeft: -12,
+    },
+    headerTitle: {
+        fontSize: 30,
+        fontWeight: '700',
+        color: '#FFFFFF',
+        letterSpacing: -0.4,
+        flex: 1,
+    },
+    scrollContent: {
+        paddingTop: 16,
+        paddingBottom: 60,
+    },
+    connectedText: {
+        color: '#86efac',
+        fontSize: 14,
+    },
+    disconnectedText: {
+        color: '#6b7280',
+        fontSize: 14,
+    },
+    musicServiceRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: HIG.list.rowPadding,
+        minHeight: HIG.list.rowHeight,
+    },
+    serviceIconContainer: {
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+    },
+    serviceInfo: {
+        marginLeft: 12,
+        flex: 1,
+    },
+    serviceLabel: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    serviceStatus: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+    footer: {
+        alignItems: 'center',
+        marginTop: 32,
+        paddingHorizontal: 32,
+        paddingBottom: 20,
+    },
+    footerText: {
+        color: '#4b5563',
+        fontSize: 13,
+        textAlign: 'center',
+    },
+    footerSubtext: {
+        color: '#374151',
+        fontSize: 12,
+        marginTop: 4,
+        textAlign: 'center',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 32,
+    },
+    modalContent: {
+        backgroundColor: HIG.systemColors.secondarySystemBackground,
+        borderRadius: HIG.radii['2xl'],
+        padding: 24,
+        width: '100%',
+        maxWidth: 340,
+    },
+    modalTitle: {
+        color: '#FFFFFF',
+        fontSize: HIG.typeScale.title3.size,
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    modalMessage: {
+        color: HIG.systemColors.secondaryLabel,
+        fontSize: HIG.typeScale.body.size,
+        lineHeight: 20,
+        marginBottom: 24,
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    modalButtonCancel: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: HIG.radii.lg,
+        backgroundColor: HIG.systemColors.systemGray5,
+        alignItems: 'center',
+    },
+    modalButtonConfirm: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: HIG.radii.lg,
+        backgroundColor: HIG.systemColors.systemRed,
+        alignItems: 'center',
+    },
+    modalButtonText: {
+        color: '#FFFFFF',
+        fontWeight: '600',
+        fontSize: 15,
+    },
+});
+

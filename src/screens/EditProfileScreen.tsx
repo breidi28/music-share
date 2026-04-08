@@ -142,15 +142,22 @@ export default function EditProfileScreen({ navigation }: any) {
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: '#0A0A0F', paddingTop: Platform.OS === 'ios' ? insets.top + 6 : insets.top + 12, paddingHorizontal: 20 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
-                    <Text style={{ color: '#6b7280', fontSize: 16 }}>Cancel</Text>
-                </TouchableOpacity>
-                <Text style={{ color: 'white', fontWeight: '700', fontSize: 22 }}>Edit Profile</Text>
-                <TouchableOpacity onPress={save} style={{ padding: 4 }} disabled={saving}>
-                    {saving ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 16 }}>Save</Text>}
-                </TouchableOpacity>
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ 
+                paddingTop: insets.top, 
+                backgroundColor: '#000',
+                borderBottomWidth: 0.5, 
+                borderBottomColor: 'rgba(255,255,255,0.1)' 
+            }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8 }}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
+                        <Text style={{ color: 'white', fontSize: 17 }}>Cancel</Text>
+                    </TouchableOpacity>
+                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 20, letterSpacing: -0.4 }}>Edit Profile</Text>
+                    <TouchableOpacity onPress={save} style={{ padding: 4 }} disabled={saving}>
+                        {saving ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 17 }}>Save</Text>}
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {loading ? (
@@ -159,7 +166,7 @@ export default function EditProfileScreen({ navigation }: any) {
                 </View>
             ) : (
                 <View style={{ flex: 1 }}>
-                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60, paddingTop: 24, paddingHorizontal: 20 }}>
                     <View style={{ alignItems: 'center', marginBottom: 28 }}>
                         <TouchableOpacity onPress={pickAvatar} activeOpacity={0.8} style={{ position: 'relative' }}>
                             <View style={{ width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden' }}>

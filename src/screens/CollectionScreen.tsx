@@ -364,6 +364,48 @@ export default function CollectionScreen({ navigation, route }: any) {
     } | null>(null);
     const [inspectModalVisible, setInspectModalVisible] = useState(false);
 
+    const normalizeForSearch = useCallback((value: string) => (
+        value || ''
+    )
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase(), []);
+
+    const renderHighlightedText = useCallback((
+        value: string,
+        query: string,
+        baseStyle: any,
+        highlightStyle: any
+    ) => {
+        const text = value || '';
+        const q = query.trim();
+        if (!text || !q) return <Text style={baseStyle} numberOfLines={1}>{text}</Text>;
+
+        const normalizedText = normalizeForSearch(text);
+        const normalizedQuery = normalizeForSearch(q);
+        const index = normalizedText.indexOf(normalizedQuery);
+
+        if (index < 0) return <Text style={baseStyle} numberOfLines={1}>{text}</Text>;
+
+        const start = index;
+        const end = index + q.length;
+
+        return (
+            <Text style={baseStyle} numberOfLines={1}>
+                {text.slice(0, start)}
+                <Text style={highlightStyle}>{text.slice(start, end)}</Text>
+                {text.slice(end)}
+            </Text>
+        );
+    }, [normalizeForSearch]);
+
+    const getMatchPill = useCallback((result: MusicSearchResult) => {
+        const matchedOn = result.matched_on || 'album';
+        if (matchedOn === 'artist') return { label: 'Artist match', color: '#22c55e' };
+        if (matchedOn === 'track') return { label: 'Song match', color: '#f59e0b' };
+        return { label: 'Album match', color: Colors.primary };
+    }, []);
+
     const load = useCallback(async (isRefresh = false) => {
         if (isRefresh) setRefreshing(true);
         try {
@@ -1048,7 +1090,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                                 }}
                                 value={searchQuery}
                                 onChangeText={setSearchQuery}
-                                placeholder="Search for album..."
+                                placeholder="Search album, artist, or song..."
                                 placeholderTextColor="#4b5563"
                                 onSubmitEditing={handleSearch}
                                 keyboardAppearance="dark"
@@ -1149,12 +1191,48 @@ export default function CollectionScreen({ navigation, route }: any) {
                                         </View>
                                     )}
                                     <View style={{ flex: 1, justifyContent: 'center' }}>
-                                        <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }} numberOfLines={1}>
-                                            {result.album}
-                                        </Text>
-                                        <Text style={{ color: Colors.primary, fontSize: 13, marginTop: 2 }} numberOfLines={1}>
-                                            {result.artist}
-                                        </Text>
+                                        {renderHighlightedText(
+                                            result.album,
+                                            searchQuery,
+                                            { color: 'white', fontWeight: '600', fontSize: 14 },
+                                            { color: '#f8fafc', backgroundColor: 'rgba(168,85,247,0.28)', fontWeight: '800' }
+                                        )}
+                                        {renderHighlightedText(
+                                            result.artist,
+                                            searchQuery,
+                                            { color: Colors.primary, fontSize: 13, marginTop: 2 },
+                                            { color: '#c4b5fd', backgroundColor: 'rgba(139,92,246,0.22)', fontWeight: '700' }
+                                        )}
+                                        {!!result.track_title && (
+                                            renderHighlightedText(
+                                                `Song: ${result.track_title}`,
+                                                searchQuery,
+                                                { color: '#9ca3af', fontSize: 12, marginTop: 2 },
+                                                { color: '#fcd34d', backgroundColor: 'rgba(245,158,11,0.2)', fontWeight: '700' }
+                                            )
+                                        )}
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+                                            <View
+                                                style={{
+                                                    backgroundColor: `${getMatchPill(result).color}22`,
+                                                    borderWidth: 1,
+                                                    borderColor: `${getMatchPill(result).color}66`,
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                    borderRadius: 999,
+                                                    marginRight: 8,
+                                                }}
+                                            >
+                                                <Text style={{ color: getMatchPill(result).color, fontSize: 10, fontWeight: '700' }}>
+                                                    {getMatchPill(result).label}
+                                                </Text>
+                                            </View>
+                                            {!!result.match_reason && (
+                                                <Text style={{ color: '#6b7280', fontSize: 10, flex: 1 }} numberOfLines={1}>
+                                                    {result.match_reason}
+                                                </Text>
+                                            )}
+                                        </View>
                                     </View>
                                     <TouchableOpacity
                                         onPress={() => handleAddToCollection(result, true)}

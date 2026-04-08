@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { FlatList, RefreshControl, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { FlatList, RefreshControl, View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -160,22 +160,33 @@ export default function FeedScreen({ navigation }: any) {
         <View
             style={{
                 paddingTop: insets.top,
-                paddingBottom: 0,
                 backgroundColor: '#000',
-                borderBottomWidth: 0.5,
+                borderBottomWidth: StyleSheet.hairlineWidth,
                 borderBottomColor: 'rgba(255,255,255,0.1)',
             }}
         >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
-                <Text style={{ fontSize: 34, fontWeight: '800', color: 'white', letterSpacing: -1, lineHeight: 40 }}>tuneshare</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <TouchableOpacity onPress={openHeaderMenu} style={{ minWidth: HIG.touchTargetMin, minHeight: HIG.touchTargetMin, alignItems: 'center', justifyContent: 'center' }}>
+            {/* Header bar with clean HIG-compliant layout */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8 }}>
+                {/* App title */}
+                <Text style={styles.headerTitle}>tuneshare</Text>
+
+                {/* Action buttons - spaced with proper touch targets */}
+                <View style={styles.headerActions}>
+                    <TouchableOpacity
+                        onPress={openHeaderMenu}
+                        style={styles.headerButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
                         <Ionicons name="menu" size={24} color="#9ca3af" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={{ minWidth: HIG.touchTargetMin, minHeight: HIG.touchTargetMin, alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                    <TouchableOpacity
+                        onPress={() => navigation.navigate('Notifications')}
+                        style={styles.headerButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
                         <Ionicons name="notifications" size={24} color="#9ca3af" />
                         {unreadCount > 0 && (
-                            <View style={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, backgroundColor: Colors.primary, borderRadius: 4, borderWidth: 1.5, borderColor: '#000' }} />
+                            <View style={styles.notificationBadge} />
                         )}
                     </TouchableOpacity>
                 </View>
@@ -331,3 +342,40 @@ export default function FeedScreen({ navigation }: any) {
         </View>
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Styles
+// ═══════════════════════════════════════════════════════════════════════════
+
+const styles = StyleSheet.create({
+    // Header
+    headerTitle: {
+        fontSize: 28,
+        fontWeight: '700',
+        color: '#FFFFFF',
+        letterSpacing: -0.5,
+        flex: 1,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    headerButton: {
+        minWidth: 44,
+        minHeight: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    notificationBadge: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        width: 8,
+        height: 8,
+        backgroundColor: Colors.primary,
+        borderRadius: 4,
+        borderWidth: 1.5,
+        borderColor: '#000',
+    },
+});

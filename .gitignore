@@ -46,8 +46,11 @@ yarn-error.*
 
 # agent skills
 .agent
+.claude
+.continue
 
 # venv
 .venv/
 backend/list_users.py
 backend/make_admin.py
+

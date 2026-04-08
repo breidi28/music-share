@@ -13,6 +13,7 @@ import os
 import re
 import json
 import time
+import unicodedata
 import hmac
 import hashlib
 import threading
@@ -20,6 +21,7 @@ import smtplib
 import ssl
 import random
 import string
+from difflib import SequenceMatcher
 from email.message import EmailMessage
 import jwt
 from dotenv import load_dotenv
@@ -3546,6 +3548,102 @@ def _normalize_album_title_key(title: str) -> str:
     return re.sub(r'[^a-z0-9]+', ' ', (title or '').lower()).strip()
 
 
+def _normalize_search_text(value: str) -> str:
+    normalized = unicodedata.normalize('NFKD', (value or ''))
+    ascii_only = normalized.encode('ascii', 'ignore').decode('ascii')
+    return re.sub(r'[^a-z0-9]+', ' ', ascii_only.lower()).strip()
+
+
+def _tokenize_search_text(value: str) -> list[str]:
+    return [token for token in _normalize_search_text(value).split() if token]
+
+
+def _similarity_ratio(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def _field_match_score(query: str, query_tokens: list[str], candidate_field: str) -> float:
+    candidate_norm = _normalize_search_text(candidate_field)
+    if not candidate_norm:
+        return 0.0
+
+    score = 0.0
+    if candidate_norm == query:
+        score += 220.0
+    elif candidate_norm.startswith(query):
+        score += 170.0
+    elif query and query in candidate_norm:
+        score += 130.0
+
+    candidate_tokens = candidate_norm.split()
+    candidate_token_set = set(candidate_tokens)
+    for token in query_tokens:
+        if token in candidate_token_set:
+            score += 26.0
+            continue
+
+        best_token_sim = max((_similarity_ratio(token, ct) for ct in candidate_tokens), default=0.0)
+        if best_token_sim >= 0.92:
+            score += 18.0
+        elif best_token_sim >= 0.85:
+            score += 10.0
+
+    score += _similarity_ratio(query, candidate_norm) * 65.0
+    return score
+
+
+def _album_search_score_components(query: str, album: str, artist: str, track: str) -> dict[str, float]:
+    query_norm = _normalize_search_text(query)
+    query_tokens = _tokenize_search_text(query_norm)
+    if not query_norm or not query_tokens:
+        return {
+            'album': 0.0,
+            'artist': 0.0,
+            'track': 0.0,
+            'coverage': 0.0,
+        }
+
+    album_score = _field_match_score(query_norm, query_tokens, album)
+    artist_score = _field_match_score(query_norm, query_tokens, artist)
+    track_score = _field_match_score(query_norm, query_tokens, track)
+
+    combined = " ".join(
+        part for part in (
+            _normalize_search_text(album),
+            _normalize_search_text(artist),
+            _normalize_search_text(track),
+        ) if part
+    )
+    combined_tokens = set(combined.split())
+    token_hits = sum(1 for token in query_tokens if token in combined_tokens)
+    coverage = token_hits / max(len(query_tokens), 1)
+
+    return {
+        'album': album_score,
+        'artist': artist_score,
+        'track': track_score,
+        'coverage': coverage,
+    }
+
+
+def _score_album_search_result(query: str, album: str, artist: str, track: str) -> float:
+    components = _album_search_score_components(query, album, artist, track)
+    album_score = components.get('album', 0.0)
+    artist_score = components.get('artist', 0.0)
+    track_score = components.get('track', 0.0)
+    coverage = components.get('coverage', 0.0)
+
+    weighted = (album_score * 1.55) + (artist_score * 1.25) + (track_score * 1.10)
+    weighted += coverage * 95.0
+
+    if album and _is_likely_single_or_ep(album):
+        weighted -= 25.0
+
+    return weighted
+
+
 def _is_likely_single_or_ep(title: str) -> bool:
     name = (title or '').lower().strip()
     return ('single' in name) or bool(re.search(r'\bep\b', name))
@@ -3924,31 +4022,147 @@ def search_albums():
                     fallback_data = json_lib.loads(response.read())
                 source_items = fallback_data.get('results', [])
         else:
-            url = f'https://itunes.apple.com/search?term={encoded}&media=music&limit=15&entity=album'
-            with urllib.request.urlopen(url, timeout=5) as response:
-                data = json_lib.loads(response.read())
-            source_items = data.get('results', [])
+            # Build richer candidates so album, artist, and song-intent queries surface better album matches.
+            ranked_candidates: dict[tuple[str, str], dict] = {}
+
+            def _upsert_candidate(item: dict, source: str):
+                album_name = (item.get('collectionName') or '').strip()
+                artist_name = (item.get('artistName') or '').strip()
+                if not album_name or not artist_name:
+                    return
+
+                collection_id = item.get('collectionId') or item.get('trackId')
+                track_title = (item.get('trackName') or '').strip()
+                artist_key = _normalize_search_text(artist_name)
+                album_key = _normalize_album_title_key(album_name)
+                if not album_key:
+                    return
+
+                key = (album_key, artist_key)
+                components = _album_search_score_components(q, album_name, artist_name, track_title)
+                score = _score_album_search_result(q, album_name, artist_name, track_title)
+                if source == 'album':
+                    score += 20.0
+                elif source == 'artist_lookup':
+                    score += 12.0
+                elif source == 'song':
+                    score += 8.0
+
+                field_scores = {
+                    'album': components.get('album', 0.0),
+                    'artist': components.get('artist', 0.0),
+                    'track': components.get('track', 0.0),
+                }
+                matched_on = max(field_scores, key=field_scores.get)
+                if field_scores.get(matched_on, 0.0) <= 0:
+                    matched_on = 'album'
+
+                if matched_on == 'artist':
+                    match_reason = f"Matched artist: {artist_name}"
+                elif matched_on == 'track' and track_title:
+                    match_reason = f"Matched song: {track_title}"
+                else:
+                    match_reason = f"Matched album: {album_name}"
+
+                candidate = {
+                    'track_title': track_title,
+                    'artist': artist_name,
+                    'album': album_name,
+                    'album_art_url': (item.get('artworkUrl100') or '').replace('100x100', '500x500'),
+                    'preview_url': item.get('previewUrl', ''),
+                    'genre': item.get('primaryGenreName', ''),
+                    'track_id': collection_id,
+                    '_score': score,
+                    '_source': source,
+                    '_matched_on': matched_on,
+                    '_match_reason': match_reason,
+                }
+
+                existing = ranked_candidates.get(key)
+                if not existing or score > existing.get('_score', 0):
+                    ranked_candidates[key] = candidate
+
+            album_resp = requests.get(
+                'https://itunes.apple.com/search',
+                params={'term': q, 'media': 'music', 'limit': 40, 'entity': 'album'},
+                timeout=8,
+            )
+            if album_resp.status_code == 200:
+                for item in album_resp.json().get('results', []):
+                    _upsert_candidate(item, 'album')
+
+            song_resp = requests.get(
+                'https://itunes.apple.com/search',
+                params={'term': q, 'media': 'music', 'limit': 45, 'entity': 'song'},
+                timeout=8,
+            )
+            if song_resp.status_code == 200:
+                for item in song_resp.json().get('results', []):
+                    _upsert_candidate(item, 'song')
+
+            artist_resp = requests.get(
+                'https://itunes.apple.com/search',
+                params={'term': q, 'media': 'music', 'entity': 'musicArtist', 'limit': 5},
+                timeout=8,
+            )
+            artist_results = artist_resp.json().get('results', []) if artist_resp.status_code == 200 else []
+            artist_results = sorted(
+                artist_results,
+                key=lambda a: _field_match_score(
+                    _normalize_search_text(q),
+                    _tokenize_search_text(q),
+                    a.get('artistName', ''),
+                ),
+                reverse=True,
+            )[:3]
+
+            for artist_item in artist_results:
+                artist_id = artist_item.get('artistId')
+                if not artist_id:
+                    continue
+                lookup_resp = requests.get(
+                    'https://itunes.apple.com/lookup',
+                    params={'id': artist_id, 'entity': 'album', 'limit': 120},
+                    timeout=8,
+                )
+                if lookup_resp.status_code != 200:
+                    continue
+                for item in lookup_resp.json().get('results', []):
+                    if item.get('wrapperType') != 'collection':
+                        continue
+                    if (item.get('collectionType') or '').lower() != 'album':
+                        continue
+                    _upsert_candidate(item, 'artist_lookup')
+
+            source_items = sorted(
+                ranked_candidates.values(),
+                key=lambda r: (-r.get('_score', 0), (r.get('album') or '').lower(), (r.get('artist') or '').lower()),
+            )[:30]
 
         results = []
         seen_collection_ids = set()
         for item in source_items:
-            collection_id = item.get('collectionId')
-            if collection_id in seen_collection_ids:
-                continue
-            seen_collection_ids.add(collection_id)
+            collection_id = item.get('track_id') if '_score' in item else item.get('collectionId')
+            if collection_id is not None:
+                if collection_id in seen_collection_ids:
+                    continue
+                seen_collection_ids.add(collection_id)
 
-            album_name = item.get('collectionName', '') or ''
+            album_name = item.get('album') if '_score' in item else (item.get('collectionName', '') or '')
             if albums_only and not _is_likely_studio_album_item(item, strict_artist_name_lc=selected_artist_name):
                 continue
 
             results.append({
-                'track_title': '',
-                'artist': item.get('artistName', ''),
+                'track_title': item.get('track_title', ''),
+                'artist': item.get('artist') if '_score' in item else item.get('artistName', ''),
                 'album': album_name,
-                'album_art_url': item.get('artworkUrl100', '').replace('100x100', '500x500'),
-                'preview_url': '',
-                'genre': item.get('primaryGenreName', ''),
+                'album_art_url': (item.get('album_art_url') if '_score' in item else item.get('artworkUrl100', '')).replace('100x100', '500x500'),
+                'preview_url': item.get('preview_url', ''),
+                'genre': item.get('genre') if '_score' in item else item.get('primaryGenreName', ''),
                 'track_id': collection_id,
+                'matched_on': item.get('_matched_on', 'album') if '_score' in item else 'album',
+                'match_reason': item.get('_match_reason', f"Matched album: {album_name}") if '_score' in item else f"Matched album: {album_name}",
+                'match_source': item.get('_source', 'album') if '_score' in item else 'album',
             })
 
         if albums_only:

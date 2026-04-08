@@ -1,31 +1,34 @@
-export const Colors = {
-    // Base dark palette
-    bg: '#0A0A0F',
-    bgCard: '#12121A',
-    bgElevated: '#1A1A26',
-    bgModal: '#1E1E2E',
+import { HIG } from './hig';
 
-    // Accent – Apple Music style Red/Pink
+export const Colors = {
+    // Base dark palette (HIG aligned)
+    bg: HIG.semantic.pageBackground,
+    bgCard: HIG.semantic.cardBackground,
+    bgElevated: HIG.semantic.cardBackgroundActive,
+    bgModal: HIG.systemColors.secondarySystemBackground,
+
+    // Brand accents
     primary: '#FA243C',
     primaryLight: '#FF3B50',
     primaryDark: '#D6001B',
     secondary: '#FA243C',
     secondaryLight: '#FF3B50',
+    systemBlue: HIG.systemColors.systemBlue,
 
     // Status
-    nowPlaying: '#10B981',   // green – currently listening
-    loved: '#EC4899',        // pink – loved/liked
-    history: '#6366F1',      // indigo – history
+    nowPlaying: HIG.systemColors.systemGreen,
+    loved: HIG.systemColors.systemPink,
+    history: HIG.systemColors.systemIndigo,
 
     // Text
-    textPrimary: '#F1F5F9',
-    textSecondary: '#94A3B8',
-    textMuted: '#475569',
+    textPrimary: HIG.systemColors.label,
+    textSecondary: HIG.systemColors.secondaryLabel,
+    textMuted: HIG.systemColors.tertiaryLabel,
     textInverse: '#0A0A0F',
 
     // UI
-    border: '#1E1E2E',
-    divider: '#1A1A26',
+    border: HIG.semantic.border,
+    divider: HIG.systemColors.separator,
     overlay: 'rgba(0,0,0,0.7)',
 
     // Gradients (as arrays for LinearGradient)

@@ -100,6 +100,9 @@ export interface MusicSearchResult {
   preview_url: string;
   genre: string;
   track_id: number;
+  matched_on?: 'album' | 'artist' | 'track';
+  match_reason?: string;
+  match_source?: 'album' | 'song' | 'artist_lookup';
 }
 
 export interface PaginatedPosts {

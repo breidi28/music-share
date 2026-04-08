@@ -34,7 +34,13 @@ type IconButtonProps = {
 
 export function AppIconButton({ onPress, children, style }: IconButtonProps) {
     return (
-        <TouchableOpacity onPress={onPress} style={[styles.iconButton, style]}>
+        <TouchableOpacity
+            onPress={onPress}
+            accessibilityRole="button"
+            hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
+            activeOpacity={0.72}
+            style={[styles.iconButton, style]}
+        >
             {children}
         </TouchableOpacity>
     );
