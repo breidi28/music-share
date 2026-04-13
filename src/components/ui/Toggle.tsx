@@ -27,7 +27,7 @@ export function Toggle({ value, onValueChange, disabled = false, size = 'default
             disabled={disabled}
             trackColor={{
                 false: HIG.systemColors.systemGray5,
-                true: HIG.systemColors.systemGreen,
+                true: 'rgba(250, 36, 60, 0.58)',
             }}
             thumbColor={HIG.systemColors.systemBackground}
             ios_backgroundColor={HIG.systemColors.systemGray5}

@@ -8,18 +8,19 @@
  * - iOS-style section headers and separators
  */
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, Platform, ActivityIndicator, Modal, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, ScrollView, Alert, Platform, ActivityIndicator, Modal, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Image } from 'expo-image';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
 import { HIG } from '../theme/hig';
 import { UtilityScreen } from '../theme/utilityScreen';
-import { spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, usersApi, notificationsApi } from '../api/endpoints';
+import { spotifyApi, youtubeApi, appleMusicApi, tidalApi, qobuzApi, deezerApi, usersApi, notificationsApi, collectionApi } from '../api/endpoints';
 import api from '../api/client';
 import { User } from '../types';
 
@@ -51,6 +52,7 @@ export default function SettingsScreen({ navigation }: any) {
 
     const [profile, setProfile] = useState<User | null>(null);
     const [loadingServices, setLoadingServices] = useState(false);
+    const [backgroundCovers, setBackgroundCovers] = useState<string[]>([]);
     const [notifications, setNotifications] = useState({
         notify_new_post: true,
         notify_now_playing: false,
@@ -68,6 +70,59 @@ export default function SettingsScreen({ navigation }: any) {
         message: string;
         onConfirm: () => void;
     } | null>(null);
+
+    const connectedServicesCount = useMemo(() => {
+        if (!profile) return 0;
+        return [
+            profile.has_spotify_linked,
+            profile.has_youtube_linked,
+            profile.has_apple_music_linked,
+            profile.has_tidal_linked,
+            profile.has_qobuz_linked,
+            profile.has_deezer_linked,
+        ].filter(Boolean).length;
+    }, [profile]);
+
+    const enabledNotificationCount = useMemo(
+        () => Object.values(notifications).filter(Boolean).length,
+        [notifications]
+    );
+
+    const introAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        if (towerColumns.length > 0) {
+            introAnim.setValue(0);
+            Animated.timing(introAnim, {
+                toValue: 1,
+                duration: 2500,
+                easing: Easing.out(Easing.poly(4)),
+                useNativeDriver: true,
+            }).start();
+        }
+    }, [backgroundCovers.length]);
+
+    const towerColumns = useMemo(() => {
+        if (!backgroundCovers.length) return [];
+        // More columns = more saves vibe
+        const count = Math.min(24, Math.max(6, Math.ceil(backgroundCovers.length / 4)));
+        return Array.from({ length: count }, (_, idx) => {
+            // More dramatic height variations based on collection size
+            const randomizer = (idx * 17 + backgroundCovers.length);
+            const height = 1 + (randomizer % 7) + Math.floor(backgroundCovers.length / 60);
+            const startIndex = idx % backgroundCovers.length;
+            
+            return {
+                key: `tower-${idx}`,
+                heightFactor: height,
+                delay: (randomizer % 10) * 100, // For staggered effect in the animation
+                covers: Array.from({ length: height }, (_, itemIdx) => {
+                    const coverIdx = (startIndex + itemIdx * 3) % backgroundCovers.length;
+                    return backgroundCovers[coverIdx];
+                }),
+            };
+        });
+    }, [backgroundCovers]);
 
     const showConfirm = (title: string, message: string, onConfirm: () => void) => {
         if (Platform.OS !== 'web') {
@@ -192,6 +247,23 @@ export default function SettingsScreen({ navigation }: any) {
             }
         };
         fetchProfile();
+    }, [user?.id]);
+
+    useEffect(() => {
+        const loadBackgroundCovers = async () => {
+            if (!user?.id) return;
+            try {
+                const res = await collectionApi.getCollection(user.id);
+                const urls = (res.data.items || [])
+                    .map(item => item.album_art_url)
+                    .filter((url): url is string => !!url);
+                const unique = Array.from(new Set(urls));
+                setBackgroundCovers(unique.slice(0, 90));
+            } catch (error) {
+                console.error('Failed to load settings background covers:', error);
+            }
+        };
+        loadBackgroundCovers();
     }, [user?.id]);
 
     useEffect(() => {
@@ -326,6 +398,57 @@ export default function SettingsScreen({ navigation }: any) {
 
     return (
         <View style={styles.container}>
+            <View style={styles.backgroundOrbTop} />
+            <View style={styles.backgroundOrbBottom} />
+            {towerColumns.length > 0 && (
+                <View pointerEvents="none" style={styles.albumBackdrop}>
+                    {towerColumns.map((tower, idx) => {
+                        // PS2 intro effect: each tower slides up from bottom based on animation
+                        const translateY = introAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [800 + tower.delay, 0],
+                        });
+                        const scale = introAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.8, 1],
+                        });
+                        const opacity = introAnim.interpolate({
+                            inputRange: [0, 0.5, 1],
+                            outputRange: [0, 0, 0.12 + ((idx % 4) * 0.04)],
+                        });
+
+                        return (
+                            <Animated.View
+                                key={tower.key}
+                                style={[
+                                    styles.albumTowerColumn,
+                                    {
+                                        marginTop: (idx % 3) * 14 + (tower.heightFactor * 2), // Stagger vertical alignment
+                                        opacity,
+                                        transform: [{ translateY }, { scale }],
+                                        // Give it a slightly shifted, deeper perspective
+                                        marginLeft: (idx % 2 === 0) ? -2 : 2, 
+                                    },
+                                ]}
+                            >
+                                {tower.covers.map((cover, coverIdx) => (
+                                    <View key={`${tower.key}-${coverIdx}`} style={styles.albumTowerTile}>
+                                        <Image
+                                            source={cover}
+                                            style={styles.albumTowerImage}
+                                            transition={250}
+                                            contentFit="cover"
+                                            cachePolicy="memory-disk"
+                                        />
+                                    </View>
+                                ))}
+                            </Animated.View>
+                        );
+                    })}
+                </View>
+            )}
+            <View pointerEvents="none" style={styles.backdropFade} />
+
             {/* Header */}
             <View style={[styles.header, headerStyles]}>
                 <View style={styles.headerContent}>
@@ -343,7 +466,25 @@ export default function SettingsScreen({ navigation }: any) {
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
+                directionalLockEnabled
             >
+                <View style={styles.heroCard}>
+                    <Text style={styles.heroTitle}>Settings</Text>
+                    <Text style={styles.heroSubtitle}>
+                        Fine tune your account, privacy, and integrations.
+                    </Text>
+                    <View style={styles.heroChipsRow}>
+                        <View style={styles.heroChip}>
+                            <Ionicons name="link-outline" size={13} color={Colors.primary} />
+                            <Text style={styles.heroChipText}>{connectedServicesCount} services</Text>
+                        </View>
+                        <View style={styles.heroChip}>
+                            <Ionicons name="notifications-outline" size={13} color="#22c55e" />
+                            <Text style={styles.heroChipText}>{enabledNotificationCount} alerts on</Text>
+                        </View>
+                    </View>
+                </View>
+
                 {/* Account Section */}
                 <ListHeader title="Account" />
                 <ListGroup>
@@ -715,35 +856,133 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#000',
     },
+    backgroundOrbTop: {
+        position: 'absolute',
+        top: -120,
+        right: -90,
+        width: 280,
+        height: 280,
+        borderRadius: 140,
+        backgroundColor: 'rgba(250, 36, 60, 0.16)',
+    },
+    backgroundOrbBottom: {
+        position: 'absolute',
+        bottom: -130,
+        left: -110,
+        width: 260,
+        height: 260,
+        borderRadius: 130,
+        backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    },
+    albumBackdrop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        flexDirection: 'row',
+        justifyContent: 'space-evenly',
+        alignItems: 'flex-start',
+        paddingTop: 86,
+        paddingHorizontal: 8,
+    },
+    albumTowerColumn: {
+        gap: 6,
+    },
+    albumTowerTile: {
+        width: 34,
+        height: 34,
+        borderRadius: 6,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: 'rgba(20,20,24,0.5)',
+    },
+    albumTowerImage: {
+        width: '100%',
+        height: '100%',
+    },
+    backdropFade: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(6,6,10,0.72)',
+    },
     header: {
-        backgroundColor: '#000',
+        backgroundColor: 'rgba(0,0,0,0.72)',
         borderBottomWidth: 0.5,
-        borderBottomColor: 'rgba(255,255,255,0.1)',
+        borderBottomColor: 'rgba(255,255,255,0.08)',
     },
     headerContent: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        paddingVertical: 8,
+        paddingVertical: 10,
     },
     backButton: {
-        minWidth: 44,
-        minHeight: 44,
+        width: 40,
+        height: 40,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 8,
-        marginLeft: -12,
+        marginRight: 10,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
     },
     headerTitle: {
-        fontSize: 30,
-        fontWeight: '700',
+        fontSize: 24,
+        fontWeight: '800',
         color: '#FFFFFF',
-        letterSpacing: -0.4,
+        letterSpacing: -0.3,
         flex: 1,
     },
     scrollContent: {
-        paddingTop: 16,
+        paddingTop: 12,
         paddingBottom: 60,
+    },
+    heroCard: {
+        marginHorizontal: HIG.list.groupedMargin,
+        marginBottom: 20,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+    },
+    heroTitle: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: '700',
+    },
+    heroSubtitle: {
+        color: '#9ca3af',
+        fontSize: 13,
+        marginTop: 4,
+    },
+    heroChipsRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginTop: 10,
+    },
+    heroChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(255,255,255,0.09)',
+        borderWidth: 1,
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    heroChipText: {
+        color: '#e5e7eb',
+        fontSize: 11,
+        fontWeight: '600',
     },
     connectedText: {
         color: '#86efac',
@@ -806,11 +1045,13 @@ const styles = StyleSheet.create({
         padding: 32,
     },
     modalContent: {
-        backgroundColor: HIG.systemColors.secondarySystemBackground,
+        backgroundColor: '#121218',
         borderRadius: HIG.radii['2xl'],
         padding: 24,
         width: '100%',
         maxWidth: 340,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     modalTitle: {
         color: '#FFFFFF',
@@ -848,4 +1089,3 @@ const styles = StyleSheet.create({
         fontSize: 15,
     },
 });
-

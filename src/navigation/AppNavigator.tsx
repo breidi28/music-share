@@ -178,7 +178,7 @@ export default function AppNavigator() {
                     gestureEnabled: true,
                     gestureDirection: 'horizontal',
                     animation: Platform.OS === 'ios' ? 'default' : 'fade',
-                    fullScreenGestureEnabled: true,
+                    fullScreenGestureEnabled: false,
                 }}
             >
                 {isAuthenticated ? (
@@ -214,6 +214,7 @@ export default function AppNavigator() {
                             options={{
                                 presentation: 'card',
                                 animation: 'slide_from_right',
+                                fullScreenGestureEnabled: false,
                             }}
                         />
                         <Stack.Screen
