@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal, TextInput, Alert, ScrollView, Platform, StyleSheet, Text, KeyboardAvoidingView } from 'react-native';
+import { View, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Modal, TextInput, Alert, ScrollView, Platform, StyleSheet, Text, KeyboardAvoidingView, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, Easing, interpolate, runOnJS, withRepeat, withSequence } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +15,7 @@ import { Colors } from '../theme';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { InteractiveCDView } from '../components/InteractiveCDView';
 import { InteractiveVinylView } from '../components/InteractiveVinylView';
+
 
 export const MEDIA_TYPES: { key: MediaType; label: string; icon: string }[] = [
     { key: 'vinyl', label: 'Vinyl', icon: 'record-vinyl' },
@@ -169,6 +172,68 @@ const DigitalMedia = React.memo(({ art }: { art?: string }) => (
     </View>
 ));
 
+const PulsingView = ({ style }: { style: any }) => {
+    const opacity = useSharedValue(0.3);
+    
+    useEffect(() => {
+        opacity.value = withRepeat(
+            withSequence(
+                withTiming(0.6, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0.3, { duration: 800, easing: Easing.inOut(Easing.ease) })
+            ),
+            -1,
+            true
+        );
+    }, []);
+
+    const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+    return <Animated.View style={[style, animStyle]} />;
+};
+
+const CollectionSkeleton = React.memo(({ viewMode }: { viewMode: 'grid' | 'list' | 'shelf' | 'magic' }) => {
+    const isGrid = viewMode === 'grid';
+    const isList = viewMode === 'list';
+    const isShelf = viewMode === 'shelf';
+
+    return (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: isShelf ? 0 : 6, justifyContent: isShelf ? 'center' : 'space-between' }}>
+            {Array.from({ length: 12 }).map((_, i) => (
+                <View 
+                    key={i} 
+                    style={{ 
+                        margin: isShelf ? 0 : 6,
+                        marginBottom: isList ? 14 : isShelf ? 0 : 16,
+                        width: isList ? '100%' : isShelf ? '33.33%' : '46%',
+                        flexDirection: isList ? 'row' : 'column',
+                        alignItems: isList ? 'center' : 'flex-start',
+                        backgroundColor: isShelf ? 'transparent' : 'rgba(255,255,255,0.03)',
+                        borderRadius: isShelf ? 0 : 14,
+                        padding: isShelf ? 0 : isList ? 12 : 0,
+                    }}
+                >
+                    <PulsingView style={{ 
+                        width: isList ? 80 : isShelf ? 120 : '100%', 
+                        height: isList ? 80 : isShelf ? 160 : 180, 
+                        borderTopLeftRadius: isShelf || isList ? 12 : 14, 
+                        borderTopRightRadius: isShelf || isList ? 0 : 14, 
+                        borderBottomLeftRadius: isShelf || isList ? 12 : 0,
+                        borderBottomRightRadius: isList ? 12 : 0,
+                        borderRadius: isList ? 12 : isShelf ? 0 : undefined,
+                        backgroundColor: '#1f2937' 
+                    }} />
+                    {(!isShelf) && (
+                        <View style={{ padding: isList ? 0 : 12, paddingLeft: isList ? 16 : 12, flex: 1, width: '100%' }}>
+                            <PulsingView style={{ width: '80%', height: 16, backgroundColor: '#374151', borderRadius: 4, marginBottom: 8 }} />
+                            <PulsingView style={{ width: '50%', height: 12, backgroundColor: '#1f2937', borderRadius: 4 }} />
+                        </View>
+                    )}
+                </View>
+            ))}
+        </View>
+    );
+});
+
 const CollectionItemRow = React.memo(({ 
     item, viewMode, isMyCollection, onEdit, onRemove, onSpin 
 }: { 
@@ -263,34 +328,27 @@ const CollectionItemRow = React.memo(({
                 </View>
             ) : renderMedia()}
 
-            <View style={{ padding: isShelf ? 2 : 12, flex: 1, justifyContent: isShelf ? 'flex-start' : 'center', alignItems: isShelf ? 'center' : 'stretch', marginTop: isShelf ? 4 : 0 }}>
+            <View style={{ padding: isShelf ? 2 : (isGrid ? 8 : 12), flex: 1, justifyContent: isShelf ? 'flex-start' : 'center', alignItems: isShelf ? 'center' : 'stretch', marginTop: isShelf ? 4 : 0 }}>
                 <Text style={{ color: isShelf ? '#d1d5db' : 'white', fontWeight: '600', fontSize: isShelf ? 10 : 13, textAlign: isShelf ? 'center' : 'left' }} numberOfLines={1}>
                     {item.album_title}
                 </Text>
                 {!isShelf && (
-                    <Text style={{ color: Colors.primary, fontSize: 11, marginTop: 2, textAlign: 'left' }} numberOfLines={1}>
+                    <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 2, textAlign: 'left' }} numberOfLines={1}>
                         {item.artist}
                     </Text>
                 )}
-                {!isShelf && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                        <View style={{ backgroundColor: 'rgba(250,36,60,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
-                            <Text style={{ color: Colors.primary, fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                {MEDIA_TYPES.find(t => t.key === item.media_type)?.label}
-                            </Text>
-                        </View>
+                {isList && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <Text style={{ color: Colors.primary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>
+                            {MEDIA_TYPES.find(t => t.key === item.media_type)?.label}
+                        </Text>
                         {item.condition && (
-                            <Text style={{ color: '#6b7280', fontSize: 10 }}>{item.condition}</Text>
+                            <Text style={{ color: '#4b5563', fontSize: 10 }}>· {item.condition}</Text>
                         )}
                     </View>
                 )}
-                {isList && item.purchase_date && (
-                    <Text style={{ color: '#6b7280', fontSize: 10, marginTop: 4 }}>
-                        <Ionicons name="calendar-outline" size={10} color="#6b7280" /> {new Date(item.purchase_date).toLocaleDateString()}
-                    </Text>
-                )}
                 {isList && item.notes && (
-                    <Text style={{ color: '#9ca3af', fontSize: 10, marginTop: 4, fontStyle: 'italic' }} numberOfLines={2}>
+                    <Text style={{ color: '#6b7280', fontSize: 10, marginTop: 3, fontStyle: 'italic' }} numberOfLines={1}>
                         {item.notes}
                     </Text>
                 )}
@@ -323,7 +381,235 @@ const CollectionItemRow = React.memo(({
     );
 });
 
+// Clean immersive magic card view with swipe gestures — double-buffer to avoid image reload ghosting
+const SWIPE_THRESHOLD = 80;
+
+// Single preloaded card slot — always mounted, never unmounted
+const MagicCardSlot = React.memo(({ item, isTop, isMyCollection, onEdit, animStyle }: {
+    item: CollectionItem | null;
+    isTop: boolean;
+    isMyCollection: boolean;
+    onEdit: (item: CollectionItem) => void;
+    animStyle: any;
+}) => {
+    if (!item) return null;
+    return (
+        <Animated.View style={[animStyle, {
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            borderRadius: 16, overflow: 'hidden', backgroundColor: '#111',
+            ...(isTop ? {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 12 },
+                shadowOpacity: 0.6,
+                shadowRadius: 20,
+                elevation: 15,
+            } : {}),
+        }]}>
+            {item.album_art_url ? (
+                <Image
+                    source={item.album_art_url}
+                    style={{ width: '100%', height: '100%' }}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                />
+            ) : (
+                <View style={{ flex: 1, backgroundColor: '#1a1a2e', alignItems: 'center', justifyContent: 'center' }}>
+                    <FontAwesome5 name={MEDIA_TYPES.find(t => t.key === item.media_type)?.icon || 'music'} size={48} color="#4b5563" />
+                </View>
+            )}
+            {isTop && isMyCollection && (
+                <TouchableOpacity
+                    onPress={() => onEdit(item)}
+                    style={{ position: 'absolute', inset: 0 } as any}
+                    activeOpacity={1}
+                />
+            )}
+        </Animated.View>
+    );
+});
+
+const MagicCardView = React.memo(({ items, isMyCollection, onEdit, onSpin }: {
+    items: CollectionItem[];
+    isMyCollection: boolean;
+    onEdit: (item: CollectionItem) => void;
+    onSpin: (item: CollectionItem) => void;
+}) => {
+    const { width, height } = useWindowDimensions();
+
+    // Double-buffer: two slots always mounted. slotA/slotB hold item indices.
+    // topSlot tells us which slot is on top.
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [slotA, setSlotA] = useState(0);          // item index shown in slot A
+    const [slotB, setSlotB] = useState(1);          // item index shown in slot B
+    const [topSlot, setTopSlot] = useState<'A' | 'B'>('A'); // which slot is interactive/on top
+
+    const translateX = useSharedValue(0);
+
+    const currentItem = items[currentIndex];
+
+    // After a forward swipe: promote bottom slot to top, load next-next into old top slot
+    // Reset translateX HERE (JS thread) so position only resets after slot swap is committed
+    const advanceForward = useCallback(() => {
+        setCurrentIndex(i => {
+            const next = Math.min(i + 1, items.length - 1);
+            setTopSlot(prev => {
+                if (prev === 'A') {
+                    setSlotA(Math.min(next + 1, items.length - 1));
+                    return 'B';
+                } else {
+                    setSlotB(Math.min(next + 1, items.length - 1));
+                    return 'A';
+                }
+            });
+            return next;
+        });
+        translateX.value = 0;
+    }, [items.length, translateX]);
+
+    // After a backward swipe: symmetrically promote the other slot
+    const advanceBackward = useCallback(() => {
+        setCurrentIndex(i => {
+            const prev = Math.max(i - 1, 0);
+            setTopSlot(prevTop => {
+                if (prevTop === 'A') {
+                    setSlotA(Math.max(prev - 1, 0));
+                    return 'B';
+                } else {
+                    setSlotB(Math.max(prev - 1, 0));
+                    return 'A';
+                }
+            });
+            return prev;
+        });
+        translateX.value = 0;
+    }, [translateX]);
+
+    const panGesture = Gesture.Pan()
+        .activeOffsetX([-15, 15])
+        .onUpdate((e) => {
+            translateX.value = e.translationX;
+        })
+        .onEnd((e) => {
+            if (e.translationX < -SWIPE_THRESHOLD || e.velocityX < -800) {
+                if (currentIndex < items.length - 1) {
+                    // Fly card off, then let advanceForward reset translateX after slot swap
+                    translateX.value = withTiming(-width, { duration: 180 }, () => {
+                        runOnJS(advanceForward)();
+                    });
+                } else {
+                    translateX.value = withSpring(0, { damping: 15, stiffness: 150 });
+                }
+            } else if (e.translationX > SWIPE_THRESHOLD || e.velocityX > 800) {
+                if (currentIndex > 0) {
+                    translateX.value = withTiming(width, { duration: 180 }, () => {
+                        runOnJS(advanceBackward)();
+                    });
+                } else {
+                    translateX.value = withSpring(0, { damping: 15, stiffness: 150 });
+                }
+            } else {
+                translateX.value = withSpring(0, { damping: 15, stiffness: 150 });
+            }
+        });
+
+    const topAnimStyle = useAnimatedStyle(() => ({
+        transform: [
+            { translateX: translateX.value },
+            { rotate: `${interpolate(translateX.value, [-width, 0, width], [-8, 0, 8])}deg` },
+            { scale: interpolate(Math.abs(translateX.value), [0, width], [1, 0.95], 'clamp') },
+        ],
+        zIndex: 10,
+    }));
+
+    const bottomAnimStyle = useAnimatedStyle(() => ({
+        transform: [
+            { scale: interpolate(Math.abs(translateX.value), [0, width], [0.9, 1], 'clamp') },
+            { translateY: interpolate(Math.abs(translateX.value), [0, width], [24, 0], 'clamp') },
+        ],
+        zIndex: 1,
+    }));
+
+    if (!currentItem) return null;
+
+    const artSize = Math.min(width - 48, height * 0.45);
+    const slotAItem = items[slotA] ?? null;
+    const slotBItem = items[slotB] ?? null;
+    const isATop = topSlot === 'A';
+
+    return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 30, paddingHorizontal: 24, paddingBottom: 20 }}>
+            {/* Card stack — two slots always mounted */}
+            <View style={{ width: artSize, height: artSize, alignSelf: 'center' }}>
+                {/* Bottom slot (always behind) */}
+                <MagicCardSlot
+                    item={isATop ? slotBItem : slotAItem}
+                    isTop={false}
+                    isMyCollection={isMyCollection}
+                    onEdit={onEdit}
+                    animStyle={bottomAnimStyle}
+                />
+                {/* Top slot (interactive, draggable) */}
+                <GestureDetector gesture={panGesture}>
+                    <MagicCardSlot
+                        item={isATop ? slotAItem : slotBItem}
+                        isTop={true}
+                        isMyCollection={isMyCollection}
+                        onEdit={onEdit}
+                        animStyle={topAnimStyle}
+                    />
+                </GestureDetector>
+            </View>
+
+            {/* Swipe hint */}
+            <Text style={{ color: '#333', fontSize: 11, marginTop: 40, letterSpacing: 0.5 }}>
+                Swipe to browse
+            </Text>
+
+            {/* Info */}
+            <View style={{ marginTop: 14, alignItems: 'center', paddingHorizontal: 20, width: '100%' }}>
+                <Text style={{ color: 'white', fontSize: 22, fontWeight: '700', textAlign: 'center', letterSpacing: -0.3 }} numberOfLines={2}>
+                    {currentItem.album_title}
+                </Text>
+                <Text style={{ color: Colors.primary, fontSize: 16, fontWeight: '500', marginTop: 6, textAlign: 'center' }} numberOfLines={1}>
+                    {currentItem.artist}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                    <View style={{ backgroundColor: 'rgba(250,36,60,0.12)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ color: Colors.primary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>
+                            {MEDIA_TYPES.find(t => t.key === currentItem.media_type)?.label}
+                        </Text>
+                    </View>
+                    {currentItem.condition && (
+                        <Text style={{ color: '#6b7280', fontSize: 12 }}>{currentItem.condition}</Text>
+                    )}
+                    {currentItem.release_year && (
+                        <Text style={{ color: '#4b5563', fontSize: 12 }}>{currentItem.release_year}</Text>
+                    )}
+                </View>
+            </View>
+
+            {/* Counter + Spin */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 26 }}>
+                <Text style={{ color: '#4b5563', fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] }}>
+                    {currentIndex + 1} / {items.length}
+                </Text>
+                {isMyCollection && (
+                    <TouchableOpacity
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onSpin(currentItem); }}
+                        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#10B981', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, gap: 6 }}
+                    >
+                        <Ionicons name="disc" size={16} color="white" />
+                        <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>Spin</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        </View>
+    );
+});
+
+
 export default function CollectionScreen({ navigation, route }: any) {
+
     const insets = useSafeAreaInsets();
     const { user } = useAuthStore();
     const { userId, username } = route?.params ?? {};
@@ -353,7 +639,24 @@ export default function CollectionScreen({ navigation, route }: any) {
     const [scanned, setScanned] = useState(false);
     
     // View state
-    const [viewMode, setViewMode] = useState<'grid' | 'list' | 'shelf'>('grid');
+    const [viewMode, setViewMode] = useState<'grid' | 'list' | 'shelf' | 'magic'>('grid');
+    const viewSelectorAnim = useSharedValue(1); // 1 = expanded, 0 = collapsed
+    const [isViewSelectorCollapsed, setIsViewSelectorCollapsed] = useState(false);
+
+    const toggleViewSelector = useCallback(() => {
+        const newCollapsed = !isViewSelectorCollapsed;
+        setIsViewSelectorCollapsed(newCollapsed);
+        viewSelectorAnim.value = withTiming(newCollapsed ? 0 : 1, {
+            duration: 280,
+            easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        });
+    }, [isViewSelectorCollapsed]);
+
+    const viewSelectorStyle = useAnimatedStyle(() => ({
+        height: interpolate(viewSelectorAnim.value, [0, 1], [0, 44]),
+        opacity: viewSelectorAnim.value,
+        overflow: 'hidden' as const,
+    }));
     const [smartShelf, setSmartShelf] = useState<'all' | 'recent' | 'top-artist' | 'mint' | 'needs-notes'>('all');
     const [discographyLoading, setDiscographyLoading] = useState(false);
     const [discographyProgress, setDiscographyProgress] = useState<{
@@ -704,10 +1007,11 @@ export default function CollectionScreen({ navigation, route }: any) {
         return mediaFilteredItems;
     }, [mediaFilteredItems, smartShelf, topArtistName]);
 
+
     const renderCollectionItem = useCallback(({ item }: { item: CollectionItem }) => (
         <CollectionItemRow 
             item={item} 
-            viewMode={viewMode} 
+            viewMode={viewMode === 'magic' ? 'grid' : viewMode} 
             isMyCollection={isMyCollection} 
             onEdit={handleEditItem}
             onRemove={handleRemove}
@@ -726,6 +1030,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                     borderBottomColor: 'rgba(255,255,255,0.1)',
                 }}
             >
+                {/* Title Row */}
                 <View style={{ paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     {!isMyCollection && (
                         <TouchableOpacity
@@ -735,12 +1040,12 @@ export default function CollectionScreen({ navigation, route }: any) {
                             <Ionicons name="arrow-back" size={24} color="white" />
                         </TouchableOpacity>
                     )}
-                    <View style={{ flex: 1 }}>
-                        <Text style={{ color: 'white', fontWeight: '700', fontSize: isMyCollection ? 30 : 22, letterSpacing: -0.4 }}>
+                    <View style={{ flex: 1, marginRight: 12 }}>
+                        <Text style={{ color: 'white', fontWeight: '700', fontSize: isMyCollection ? 30 : 22, letterSpacing: -0.4 }} numberOfLines={1}>
                             {isMyCollection ? 'Collection' : `${username}'s Collection`}
                         </Text>
                     </View>
-                    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                         <TouchableOpacity
                             onPress={() =>
                                 navigation.navigate('ArtistProgress', {
@@ -757,41 +1062,17 @@ export default function CollectionScreen({ navigation, route }: any) {
                         >
                             <Ionicons name="stats-chart" size={16} color="white" />
                         </TouchableOpacity>
-                        <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20, padding: 3 }}>
-                            <TouchableOpacity
-                                onPress={() => setViewMode('grid')}
-                                style={{
-                                    paddingHorizontal: 9,
-                                    paddingVertical: 6,
-                                    borderRadius: 16,
-                                    backgroundColor: viewMode === 'grid' ? 'rgba(255,255,255,0.22)' : 'transparent',
-                                }}
-                            >
-                                <Ionicons name="grid" size={16} color="white" />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={() => setViewMode('list')}
-                                style={{
-                                    paddingHorizontal: 9,
-                                    paddingVertical: 6,
-                                    borderRadius: 16,
-                                    backgroundColor: viewMode === 'list' ? 'rgba(255,255,255,0.22)' : 'transparent',
-                                }}
-                            >
-                                <Ionicons name="list" size={16} color="white" />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={() => setViewMode('shelf')}
-                                style={{
-                                    paddingHorizontal: 9,
-                                    paddingVertical: 6,
-                                    borderRadius: 16,
-                                    backgroundColor: viewMode === 'shelf' ? 'rgba(255,255,255,0.22)' : 'transparent',
-                                }}
-                            >
-                                <Ionicons name="albums" size={16} color="white" />
-                            </TouchableOpacity>
-                        </View>
+                        <TouchableOpacity
+                            onPress={toggleViewSelector}
+                            style={{
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                                borderRadius: 20,
+                                paddingHorizontal: 11,
+                                paddingVertical: 8,
+                            }}
+                        >
+                            <Ionicons name={isViewSelectorCollapsed ? 'chevron-down' : 'chevron-up'} size={16} color="white" />
+                        </TouchableOpacity>
                         {isMyCollection && (
                             <TouchableOpacity
                                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAddModalVisible(true); }}
@@ -808,9 +1089,58 @@ export default function CollectionScreen({ navigation, route }: any) {
                     </View>
                 </View>
 
+                {/* Animated View Selector Row */}
+                <Animated.View style={[viewSelectorStyle, { paddingHorizontal: 16 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingBottom: 8 }}>
+                        <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20, padding: 3 }}>
+                            {([
+                                { mode: 'grid' as const, icon: 'grid' as const },
+                                { mode: 'list' as const, icon: 'list' as const },
+                                { mode: 'shelf' as const, icon: 'albums' as const },
+                                { mode: 'magic' as const, icon: 'sparkles' as const },
+                            ]).map(({ mode, icon }) => (
+                                <TouchableOpacity
+                                    key={mode}
+                                    onPress={() => setViewMode(mode)}
+                                    style={{
+                                        paddingHorizontal: 14,
+                                        paddingVertical: 7,
+                                        borderRadius: 16,
+                                        backgroundColor: viewMode === mode ? 'rgba(255,255,255,0.22)' : 'transparent',
+                                    }}
+                                >
+                                    <Ionicons name={icon} size={16} color="white" />
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                </Animated.View>
             </View>
 
+
                         {/* Collection Grid */}
+            {viewMode === 'magic' ? (
+                <View style={{ flex: 1, backgroundColor: '#04080f' }}>
+                    {smartFilteredItems.length > 0 ? (
+                        <MagicCardView
+                            items={smartFilteredItems}
+                            isMyCollection={isMyCollection}
+                            onEdit={handleEditItem}
+                            onSpin={handleSpin}
+                        />
+                    ) : (
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
+                            <Ionicons name="sparkles" size={40} color={Colors.primary} />
+                            <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginTop: 16, textAlign: 'center' }}>
+                                Nothing here yet
+                            </Text>
+                            <Text style={{ color: '#6b7280', fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+                                Add albums to your collection to browse them here.
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            ) : (
             <FlatList
                 key={viewMode}
                 data={smartFilteredItems}
@@ -836,171 +1166,115 @@ export default function CollectionScreen({ navigation, route }: any) {
                 }
                 ListHeaderComponent={
                     <>
-                        {/* Collection Stats */}
-                        {stats && stats.total > 0 && (
-                            <View style={{ paddingHorizontal: 10, paddingBottom: 12, paddingTop: 10 }}>
-                                <View style={{ flexDirection: 'row', backgroundColor: '#111', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#222' }}>
-                                    <View style={{ flex: 1, alignItems: 'center' }}>
-                                        <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Total</Text>
-                                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{stats.total}</Text>
-                                    </View>
-                                    <View style={{ width: 1, backgroundColor: '#333', marginHorizontal: 8 }} />
-                                    <View style={{ flex: 1, alignItems: 'center' }}>
-                                        <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Vinyls</Text>
-                                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{stats.vinyl_count}</Text>
-                                    </View>
-                                    <View style={{ width: 1, backgroundColor: '#333', marginHorizontal: 8 }} />
-                                    <View style={{ flex: 1, alignItems: 'center' }}>
-                                        <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>CDs</Text>
-                                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{stats.cd_count}</Text>
-                                    </View>
-                                </View>
-                                {stats.top_artist && (
-                                    <Text style={{ color: '#9ca3af', fontSize: 12, marginTop: 10, textAlign: 'center' }}>
-                                        Top Artist: <Text style={{ color: Colors.primary, fontWeight: '600' }}>{stats.top_artist}</Text>
+                        {/* Compact Stats + Filter Row */}
+                        <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6 }}>
+                            {stats && stats.total > 0 && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                                    <Text style={{ color: '#6b7280', fontSize: 12, fontWeight: '600' }}>
+                                        {stats.total} <Text style={{ color: '#4b5563' }}>items</Text>
                                     </Text>
-                                )}
-                            </View>
-                        )}
-
-                        {/* Filter tabs */}
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 0 }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 12, gap: 8 }}>
-                            <TouchableOpacity
-                                onPress={() => setFilterType('all')}
-                                style={{
-                                    paddingHorizontal: 14,
-                                    paddingVertical: 7,
-                                    borderRadius: 18,
-                                    backgroundColor: filterType === 'all' ? Colors.primary : 'rgba(255,255,255,0.1)',
-                                }}
-                            >
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>
-                                    All ({items.length})
-                                </Text>
-                            </TouchableOpacity>
-                            {MEDIA_TYPES.map(type => {
-                                const count = items.filter(i => i.media_type === type.key).length;
-                                return (
-                                    <TouchableOpacity
-                                        key={type.key}
-                                        onPress={() => setFilterType(type.key)}
-                                        style={{
-                                            paddingHorizontal: 14,
-                                            paddingVertical: 7,
-                                            borderRadius: 18,
-                                            backgroundColor: filterType === type.key ? Colors.primary : 'rgba(255,255,255,0.1)',
-                                        }}
-                                    >
-                                        <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>
-                                            {type.label} ({count})
-                                        </Text>
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </ScrollView>
-
-                        {/* Smart Shelves */}
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 12, gap: 8 }}>
-                            {[
-                                { key: 'all', label: `All (${mediaFilteredItems.length})` },
-                                { key: 'recent', label: 'Recent Finds' },
-                                { key: 'top-artist', label: topArtistName ? `Top Artist: ${topArtistName}` : 'Top Artist' },
-                                { key: 'mint', label: 'Mint/Near Mint' },
-                                { key: 'needs-notes', label: 'Needs Notes' },
-                            ].map(shelf => (
-                                <TouchableOpacity
-                                    key={shelf.key}
-                                    onPress={() => setSmartShelf(shelf.key as 'all' | 'recent' | 'top-artist' | 'mint' | 'needs-notes')}
-                                    style={{
-                                        paddingHorizontal: 14,
-                                        paddingVertical: 7,
-                                        borderRadius: 18,
-                                        backgroundColor: smartShelf === shelf.key ? '#fff' : 'rgba(255,255,255,0.08)',
-                                    }}
-                                >
-                                    <Text style={{ fontSize: 12, fontWeight: '700', color: smartShelf === shelf.key ? '#111' : '#fff' }}>
-                                        {shelf.label}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-
-                        {/* Complete This Artist Discography */}
-                        {!!discographyProgress && (
-                            <View style={{ paddingHorizontal: 10, paddingBottom: 14 }}>
-                                <View style={{ backgroundColor: '#101014', borderRadius: 14, borderWidth: 1, borderColor: '#23232a', padding: 14 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <View style={{ flex: 1, paddingRight: 12 }}>
-                                            <Text style={{ color: '#d1d5db', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                                                Complete This Artist
-                                            </Text>
-                                            <Text style={{ color: 'white', fontSize: 17, fontWeight: '700', marginTop: 2 }} numberOfLines={1}>
-                                                {discographyProgress.artist}
-                                            </Text>
-                                            <Text style={{ color: '#9ca3af', fontSize: 12, marginTop: 4 }}>
-                                                {discographyProgress.ownedCount}/{discographyProgress.totalKnown} albums in your collection
-                                            </Text>
-                                        </View>
-                                        <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(250,36,60,0.18)', alignItems: 'center', justifyContent: 'center' }}>
-                                            <Text style={{ color: Colors.primary, fontWeight: '800', fontSize: 16 }}>
-                                                {discographyProgress.totalKnown > 0
-                                                    ? `${Math.round((discographyProgress.ownedCount / discographyProgress.totalKnown) * 100)}%`
-                                                    : '0%'}
-                                            </Text>
-                                        </View>
-                                    </View>
-
-                                    {!!discographyProgress.missingAlbums.length && (
+                                    {stats.top_artist && (
                                         <>
-                                            <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 12, marginBottom: 8 }}>
-                                                Missing picks
+                                            <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#4b5563' }} />
+                                            <Text style={{ color: '#6b7280', fontSize: 12 }} numberOfLines={1}>
+                                                Top: <Text style={{ color: Colors.primary, fontWeight: '600' }}>{stats.top_artist}</Text>
                                             </Text>
-                                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                                                {discographyProgress.missingAlbums.map((album, idx) => (
-                                                    <View key={`${album.track_id}-${idx}`} style={{ width: 126 }}>
-                                                        <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-                                                            {album.album_art_url ? (
-                                                                <Image source={album.album_art_url} style={{ width: '100%', aspectRatio: 1 }} transition={150} contentFit="cover" cachePolicy="memory-disk" />
-                                                            ) : (
-                                                                <View style={{ width: '100%', aspectRatio: 1, backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
-                                                                    <FontAwesome5 name="music" size={20} color="#4b5563" />
-                                                                </View>
-                                                            )}
-                                                            <View style={{ padding: 8 }}>
-                                                                <Text style={{ color: 'white', fontSize: 12, fontWeight: '600' }} numberOfLines={2}>
-                                                                    {album.album}
-                                                                </Text>
-                                                                {isMyCollection && (
-                                                                    <TouchableOpacity
-                                                                        onPress={() => handleAddToCollection(album, true)}
-                                                                        style={{ marginTop: 8, backgroundColor: Colors.primary, borderRadius: 8, paddingVertical: 6, alignItems: 'center' }}
-                                                                    >
-                                                                        <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>Add</Text>
-                                                                    </TouchableOpacity>
-                                                                )}
-                                                            </View>
-                                                        </View>
-                                                    </View>
-                                                ))}
-                                            </ScrollView>
                                         </>
                                     )}
-
-                                    {discographyLoading && (
-                                        <View style={{ marginTop: 10, alignItems: 'center' }}>
-                                            <ActivityIndicator color={Colors.primary} size="small" />
-                                        </View>
-                                    )}
                                 </View>
+                            )}
+
+                            {/* Filter tabs */}
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                                <TouchableOpacity
+                                    onPress={() => { setFilterType('all'); setSmartShelf('all'); }}
+                                    style={{
+                                        paddingHorizontal: 14,
+                                        paddingVertical: 6,
+                                        borderRadius: 18,
+                                        backgroundColor: filterType === 'all' && smartShelf === 'all' ? Colors.primary : 'rgba(255,255,255,0.08)',
+                                    }}
+                                >
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>
+                                        All
+                                    </Text>
+                                </TouchableOpacity>
+                                {MEDIA_TYPES.map(type => {
+                                    const count = items.filter(i => i.media_type === type.key).length;
+                                    if (count === 0) return null;
+                                    return (
+                                        <TouchableOpacity
+                                            key={type.key}
+                                            onPress={() => { setFilterType(type.key); setSmartShelf('all'); }}
+                                            style={{
+                                                paddingHorizontal: 14,
+                                                paddingVertical: 6,
+                                                borderRadius: 18,
+                                                backgroundColor: filterType === type.key ? Colors.primary : 'rgba(255,255,255,0.08)',
+                                            }}
+                                        >
+                                            <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>
+                                                {type.label}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                                <View style={{ width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.1)', alignSelf: 'center', marginHorizontal: 2 }} />
+                                {[
+                                    { key: 'recent' as const, label: 'Recent' },
+                                    { key: 'mint' as const, label: 'Mint' },
+                                ].map(shelf => (
+                                    <TouchableOpacity
+                                        key={shelf.key}
+                                        onPress={() => { setFilterType('all'); setSmartShelf(shelf.key); }}
+                                        style={{
+                                            paddingHorizontal: 14,
+                                            paddingVertical: 6,
+                                            borderRadius: 18,
+                                            backgroundColor: smartShelf === shelf.key ? '#fff' : 'rgba(255,255,255,0.08)',
+                                        }}
+                                    >
+                                        <Text style={{ fontSize: 12, fontWeight: '700', color: smartShelf === shelf.key ? '#111' : '#9ca3af' }}>
+                                            {shelf.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </View>
+
+                        {/* Compact Discography Progress */}
+                        {!!discographyProgress && (
+                            <View style={{ paddingHorizontal: 12, paddingBottom: 10 }}>
+                                <TouchableOpacity
+                                    onPress={() => navigation.navigate('ArtistProgress', { userId: viewingUserId, username: isMyCollection ? user?.username : username })}
+                                    activeOpacity={0.7}
+                                    style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#101014', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#1a1a20', gap: 12 }}
+                                >
+                                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(250,36,60,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Text style={{ color: Colors.primary, fontWeight: '800', fontSize: 13 }}>
+                                            {discographyProgress.totalKnown > 0
+                                                ? `${Math.round((discographyProgress.ownedCount / discographyProgress.totalKnown) * 100)}%`
+                                                : '0%'}
+                                        </Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                                            {discographyProgress.artist}
+                                        </Text>
+                                        <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 1 }}>
+                                            {discographyProgress.ownedCount}/{discographyProgress.totalKnown} albums · Tap to explore
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={16} color="#4b5563" />
+                                </TouchableOpacity>
                             </View>
                         )}
+
                     </>
                 }
                 ListEmptyComponent={
                     loading ? (
-                        <View style={{ paddingVertical: 60, alignItems: "center" }}>
-                            <ActivityIndicator size="large" color={Colors.primary} />
-                        </View>
+                        <CollectionSkeleton viewMode={viewMode} />
                     ) : (
                         <View style={{ paddingVertical: 60, alignItems: "center", paddingHorizontal: 40 }}>
                             <FontAwesome5 name="record-vinyl" size={64} color={Colors.primary} style={{ opacity: 0.8 }} />
@@ -1034,6 +1308,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                     )
                 }
             />
+            )}
 
               {/* Add to Collection Modal */}
             <Modal visible={addModalVisible} animationType="slide" presentationStyle="pageSheet">
@@ -1116,13 +1391,10 @@ export default function CollectionScreen({ navigation, route }: any) {
                                     borderRadius: 14,
                                     paddingHorizontal: 20,
                                     justifyContent: 'center',
+                                    opacity: searching ? 0.7 : 1,
                                 }}
                             >
-                                {searching ? (
-                                    <ActivityIndicator color="white" size="small" />
-                                ) : (
-                                    <Ionicons name="search" size={20} color="white" />
-                                )}
+                                <Ionicons name="search" size={20} color="white" />
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -1169,83 +1441,110 @@ export default function CollectionScreen({ navigation, route }: any) {
 
                     {/* Search Results */}
                     <ScrollView style={{ flex: 1, paddingHorizontal: 20 }}>
-                        {searchResults.map((result, idx) => (
-                            <View key={idx} style={{ marginBottom: 12 }}>
-                                <TouchableOpacity
-                                    onPress={() => handleAddToCollection(result, false)}
-                                    style={{
-                                        flexDirection: 'row',
-                                        gap: 12,
-                                        padding: 12,
-                                        backgroundColor: 'rgba(255,255,255,0.05)',
-                                        borderRadius: 14,
-                                        borderWidth: 1,
-                                        borderColor: 'rgba(255,255,255,0.08)',
-                                    }}
-                                >
-                                    {result.album_art_url ? (
-                                        <Image source={result.album_art_url} style={{ width: 60, height: 60, borderRadius: 8 }} transition={150} contentFit="cover" cachePolicy="memory-disk" />
-                                    ) : (
-                                        <View style={{ width: 60, height: 60, borderRadius: 8, backgroundColor: '#1f2937', justifyContent: 'center', alignItems: 'center' }}>
-                                            <FontAwesome5 name="music" size={20} color="#4b5563" />
-                                        </View>
-                                    )}
-                                    <View style={{ flex: 1, justifyContent: 'center' }}>
-                                        {renderHighlightedText(
-                                            result.album,
-                                            searchQuery,
-                                            { color: 'white', fontWeight: '600', fontSize: 14 },
-                                            { color: '#f8fafc', backgroundColor: 'rgba(168,85,247,0.28)', fontWeight: '800' }
-                                        )}
-                                        {renderHighlightedText(
-                                            result.artist,
-                                            searchQuery,
-                                            { color: Colors.primary, fontSize: 13, marginTop: 2 },
-                                            { color: '#c4b5fd', backgroundColor: 'rgba(139,92,246,0.22)', fontWeight: '700' }
-                                        )}
-                                        {!!result.track_title && (
-                                            renderHighlightedText(
-                                                `Song: ${result.track_title}`,
-                                                searchQuery,
-                                                { color: '#9ca3af', fontSize: 12, marginTop: 2 },
-                                                { color: '#fcd34d', backgroundColor: 'rgba(245,158,11,0.2)', fontWeight: '700' }
-                                            )
-                                        )}
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-                                            <View
-                                                style={{
-                                                    backgroundColor: `${getMatchPill(result).color}22`,
-                                                    borderWidth: 1,
-                                                    borderColor: `${getMatchPill(result).color}66`,
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                    borderRadius: 999,
-                                                    marginRight: 8,
-                                                }}
-                                            >
-                                                <Text style={{ color: getMatchPill(result).color, fontSize: 10, fontWeight: '700' }}>
-                                                    {getMatchPill(result).label}
-                                                </Text>
-                                            </View>
-                                            {!!result.match_reason && (
-                                                <Text style={{ color: '#6b7280', fontSize: 10, flex: 1 }} numberOfLines={1}>
-                                                    {result.match_reason}
-                                                </Text>
-                                            )}
-                                        </View>
+                        {searching ? (
+                            Array.from({ length: 5 }).map((_, idx) => (
+                                <View key={idx} style={{ marginBottom: 12, flexDirection: 'row', gap: 12, padding: 12, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 14 }}>
+                                    <PulsingView style={{ width: 60, height: 60, borderRadius: 8, backgroundColor: '#1f2937' }} />
+                                    <View style={{ flex: 1, justifyContent: 'center', gap: 8 }}>
+                                        <PulsingView style={{ width: '70%', height: 14, backgroundColor: '#374151', borderRadius: 4 }} />
+                                        <PulsingView style={{ width: '40%', height: 12, backgroundColor: '#1f2937', borderRadius: 4 }} />
                                     </View>
-                                    <TouchableOpacity
-                                        onPress={() => handleAddToCollection(result, true)}
-                                        style={{ justifyContent: 'center', paddingHorizontal: 8 }}
-                                    >
-                                        <View style={{ alignItems: 'center' }}>
-                                            <Ionicons name="add-circle" size={32} color={Colors.primary} />
-                                            <Text style={{ color: Colors.primary, fontSize: 9, fontWeight: '600', marginTop: 2 }}>Add</Text>
-                                        </View>
-                                    </TouchableOpacity>
-                                </TouchableOpacity>
+                                </View>
+                            ))
+                        ) : searchResults.length === 0 && searchQuery.trim().length > 0 ? (
+                            <View style={{ alignItems: 'center', paddingTop: 40, opacity: 0.8 }}>
+                                <Ionicons name="search-outline" size={48} color="#4b5563" />
+                                <Text style={{ color: 'white', fontSize: 16, fontWeight: '600', marginTop: 16 }}>No albums found</Text>
+                                <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 8, textAlign: 'center' }}>
+                                    We couldn't find anything for "{searchQuery}". {'\n'}Try checking for typos or scanning a barcode.
+                                </Text>
                             </View>
-                        ))}
+                        ) : searchResults.length === 0 ? (
+                            <View style={{ alignItems: 'center', paddingTop: 40, opacity: 0.6 }}>
+                                <Ionicons name="albums-outline" size={48} color="#4b5563" />
+                                <Text style={{ color: '#9ca3af', fontSize: 14, marginTop: 16, textAlign: 'center' }}>
+                                    Search for artists, albums, or tracks {'\n'}to add to your collection.
+                                </Text>
+                            </View>
+                        ) : (
+                            searchResults.map((result, idx) => (
+                                <View key={idx} style={{ marginBottom: 12 }}>
+                                    <TouchableOpacity
+                                        onPress={() => handleAddToCollection(result, false)}
+                                        style={{
+                                            flexDirection: 'row',
+                                            gap: 12,
+                                            padding: 12,
+                                            backgroundColor: 'rgba(255,255,255,0.05)',
+                                            borderRadius: 14,
+                                            borderWidth: 1,
+                                            borderColor: 'rgba(255,255,255,0.08)',
+                                        }}
+                                    >
+                                        {result.album_art_url ? (
+                                            <Image source={result.album_art_url} style={{ width: 60, height: 60, borderRadius: 8 }} transition={150} contentFit="cover" cachePolicy="memory-disk" />
+                                        ) : (
+                                            <View style={{ width: 60, height: 60, borderRadius: 8, backgroundColor: '#1f2937', justifyContent: 'center', alignItems: 'center' }}>
+                                                <FontAwesome5 name="music" size={20} color="#4b5563" />
+                                            </View>
+                                        )}
+                                        <View style={{ flex: 1, justifyContent: 'center' }}>
+                                            {renderHighlightedText(
+                                                result.album,
+                                                searchQuery,
+                                                { color: 'white', fontWeight: '600', fontSize: 14 },
+                                                { color: '#f8fafc', backgroundColor: 'rgba(168,85,247,0.28)', fontWeight: '800' }
+                                            )}
+                                            {renderHighlightedText(
+                                                result.artist,
+                                                searchQuery,
+                                                { color: Colors.primary, fontSize: 13, marginTop: 2 },
+                                                { color: '#c4b5fd', backgroundColor: 'rgba(139,92,246,0.22)', fontWeight: '700' }
+                                            )}
+                                            {!!result.track_title && (
+                                                renderHighlightedText(
+                                                    `Song: ${result.track_title}`,
+                                                    searchQuery,
+                                                    { color: '#9ca3af', fontSize: 12, marginTop: 2 },
+                                                    { color: '#fcd34d', backgroundColor: 'rgba(245,158,11,0.2)', fontWeight: '700' }
+                                                )
+                                            )}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+                                                <View
+                                                    style={{
+                                                        backgroundColor: `${getMatchPill(result).color}22`,
+                                                        borderWidth: 1,
+                                                        borderColor: `${getMatchPill(result).color}66`,
+                                                        paddingHorizontal: 8,
+                                                        paddingVertical: 3,
+                                                        borderRadius: 999,
+                                                        marginRight: 8,
+                                                    }}
+                                                >
+                                                    <Text style={{ color: getMatchPill(result).color, fontSize: 10, fontWeight: '700' }}>
+                                                        {getMatchPill(result).label}
+                                                    </Text>
+                                                </View>
+                                                {!!result.match_reason && (
+                                                    <Text style={{ color: '#6b7280', fontSize: 10, flex: 1 }} numberOfLines={1}>
+                                                        {result.match_reason}
+                                                    </Text>
+                                                )}
+                                            </View>
+                                        </View>
+                                        <TouchableOpacity
+                                            onPress={() => handleAddToCollection(result, true)}
+                                            style={{ justifyContent: 'center', paddingHorizontal: 8 }}
+                                        >
+                                            <View style={{ alignItems: 'center' }}>
+                                                <Ionicons name="add-circle" size={32} color={Colors.primary} />
+                                                <Text style={{ color: Colors.primary, fontSize: 9, fontWeight: '600', marginTop: 2 }}>Add</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    </TouchableOpacity>
+                                </View>
+                            ))
+                        )}
                     </ScrollView>
                 </View>
             </Modal>

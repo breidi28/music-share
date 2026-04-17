@@ -1,11 +1,10 @@
 import React from 'react';
-import { View, Platform, Animated } from 'react-native';
+import { View, Platform, TouchableOpacity, Text, StyleSheet, Pressable } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { StyleSheet } from 'react-native';
 import { enableScreens } from 'react-native-screens';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -41,98 +40,152 @@ import ArtistProgressScreen from '../screens/ArtistProgressScreen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function TabNavigator() {
+const TAB_ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap; label: string }> = {
+    Feed:       { active: 'home',    inactive: 'home-outline',    label: 'Home' },
+    Explore:    { active: 'compass', inactive: 'compass-outline', label: 'Explore' },
+    Share:      { active: 'add-circle', inactive: 'add-circle-outline', label: '' },
+    Collection: { active: 'albums',  inactive: 'albums-outline',  label: 'Collection' },
+    MyProfile:  { active: 'person',  inactive: 'person-outline',  label: 'Profile' },
+};
+
+// Liquid glass floating dock tab bar
+function LiquidGlassTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     const insets = useSafeAreaInsets();
 
-    // Calculate tab bar height with safe area insets
-    const tabBarHeight = Platform.OS === 'ios' ? 64 + insets.bottom : 58 + insets.bottom;
+    return (
+        <View
+            pointerEvents="box-none"
+            style={{
+                position: 'absolute',
+                bottom: Math.max(insets.bottom, 12) + 4,
+                left: 8,
+                right: 8,
+            }}
+        >
+            {/* Outer pill */}
+            <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                width: '100%',
+                borderRadius: 40,
+                overflow: 'hidden',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.45,
+                shadowRadius: 24,
+                elevation: 20,
+            }}>
+                {/* Blur layer */}
+                <BlurView
+                    tint="dark"
+                    intensity={Platform.OS === 'ios' ? 80 : 100}
+                    style={StyleSheet.absoluteFill}
+                />
+                {/* Glass fill + border container */}
+                <View style={{
+                    ...StyleSheet.absoluteFillObject,
+                    borderRadius: 40,
+                    backgroundColor: 'rgba(255,255,255,0.08)',
+                    // Specular top highlight — the "liquid glass" light edge
+                    borderWidth: 1,
+                    borderTopColor: 'rgba(255,255,255,0.35)',
+                    borderLeftColor: 'rgba(255,255,255,0.12)',
+                    borderRightColor: 'rgba(255,255,255,0.12)',
+                    borderBottomColor: 'rgba(255,255,255,0.04)',
+                }} />
+                {/* Tab items */}
+                <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center', width: '100%', paddingHorizontal: 8, paddingVertical: 12 }}>
+                    {state.routes.map((route, index) => {
+                        const focused = state.index === index;
+                        const icon = TAB_ICONS[route.name];
+                        const isShare = route.name === 'Share';
 
+                        return (
+                            <Pressable
+                                key={route.key}
+                                onPress={() => {
+                                    const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+                                    if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+                                }}
+                                onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
+                                style={({ pressed }) => ({
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    paddingHorizontal: isShare ? 8 : 4,
+                                    paddingVertical: 4,
+                                    opacity: pressed ? 0.7 : 1,
+                                })}
+                            >
+                                {isShare ? (
+                                    // FAB pill inside the dock
+                                    <View style={{
+                                        width: 48,
+                                        height: 48,
+                                        borderRadius: 24,
+                                        backgroundColor: Colors.primary,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        shadowColor: Colors.primary,
+                                        shadowOffset: { width: 0, height: 4 },
+                                        shadowOpacity: 0.5,
+                                        shadowRadius: 10,
+                                        elevation: 8,
+                                        marginHorizontal: 4,
+                                    }}>
+                                        <Ionicons name="add" size={26} color="white" />
+                                    </View>
+                                ) : (
+                                    <View style={{ alignItems: 'center', gap: 3 }}>
+                                        {/* Active indicator pill behind icon */}
+                                        {focused && (
+                                            <View style={{
+                                                position: 'absolute',
+                                                top: -6,
+                                                width: 36,
+                                                height: 36,
+                                                borderRadius: 18,
+                                                backgroundColor: 'rgba(255,255,255,0.12)',
+                                            }} />
+                                        )}
+                                        <Ionicons
+                                            name={focused ? icon.active : icon.inactive}
+                                            size={24}
+                                            color={focused ? Colors.primary : 'rgba(255,255,255,0.45)'}
+                                        />
+                                        <Text style={{
+                                            fontSize: 10,
+                                            fontWeight: focused ? '700' : '500',
+                                            color: focused ? Colors.primary : 'rgba(255,255,255,0.35)',
+                                            letterSpacing: 0.2,
+                                        }}>
+                                            {icon.label}
+                                        </Text>
+                                    </View>
+                                )}
+                            </Pressable>
+                        );
+                    })}
+                </View>
+            </View>
+        </View>
+    );
+}
+
+function TabNavigator() {
     return (
         <Tab.Navigator
-            screenOptions={({ route }) => ({
-                headerShown: false,
-                tabBarShowLabel: true,
-                // Use native iOS tab bar styling
-                // Use native iOS tab bar styling with frosted glass
-                tabBarBackground: () => (
-                    <BlurView
-                        tint="dark"
-                        intensity={95}
-                        style={StyleSheet.absoluteFill}
-                    />
-                ),
-                tabBarStyle: Platform.OS === 'ios' ? {
-                    position: 'absolute',
-                    backgroundColor: 'transparent', // The BlurView handles the background
-                    borderTopColor: 'rgba(255, 255, 255, 0.15)',
-                    borderTopWidth: StyleSheet.hairlineWidth,
-                    height: tabBarHeight,
-                    paddingBottom: Math.max(insets.bottom, 8),
-                    paddingTop: 8,
-                    elevation: 0,
-                } : {
-                    position: 'absolute',
-                    backgroundColor: 'rgba(28, 28, 30, 0.85)',
-                    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-                    borderTopWidth: 1,
-                    height: tabBarHeight,
-                    paddingBottom: Math.max(insets.bottom, 10),
-                    paddingTop: 8,
-                    elevation: 0,
-                },
-                tabBarActiveTintColor: Colors.primary, // Apple Music Pink/Red active tint
-                tabBarInactiveTintColor: '#9ca3af', // gray-400
-                tabBarLabelStyle: {
-                    fontSize: 11,
-                    fontWeight: '600',
-                    marginTop: -2,
-                    marginBottom: Platform.OS === 'ios' ? 0 : 4,
-                },
-                tabBarIconStyle: {
-                    marginTop: Platform.OS === 'ios' ? 4 : 0,
-                },
-                tabBarIcon: ({ color, focused, size }) => {
-                    const icons: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
-                        Feed: { active: 'home', inactive: 'home-outline' },
-                        Explore: { active: 'compass', inactive: 'compass-outline' },
-                        Share: { active: 'add-circle', inactive: 'add-circle-outline' },
-                        Collection: { active: 'albums', inactive: 'albums-outline' },
-                        MyProfile: { active: 'person', inactive: 'person-outline' },
-                    };
-                    const icon = icons[route.name];
-                    // Center FAB for Share button with iOS-style elevation
-                    if (route.name === 'Share') {
-                        return (
-                            <View style={{
-                                width: 52,
-                                height: 52,
-                                borderRadius: 26,
-                                backgroundColor: Colors.primary,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                // iOS-style shadow
-                                shadowColor: Colors.primary,
-                                shadowOffset: { width: 0, height: 4 },
-                                shadowOpacity: 0.3,
-                                shadowRadius: 8,
-                                elevation: 6,
-                            }}>
-                                <Ionicons name="add" size={28} color="white" />
-                            </View>
-                        );
-                    }
-                    return <Ionicons name={focused ? icon?.active : icon?.inactive} size={size} color={color} />;
-                },
-            })}
+            tabBar={(props) => <LiquidGlassTabBar {...props} />}
+            screenOptions={{ headerShown: false }}
         >
-            <Tab.Screen name="Feed" component={FeedScreen} options={{ tabBarLabel: 'Home' }} />
+            <Tab.Screen name="Feed" component={FeedScreen} />
             <Tab.Screen name="Explore" component={ExploreScreen} />
-            <Tab.Screen name="Share" component={ShareScreen} options={{ tabBarLabel: '' }} />
+            <Tab.Screen name="Share" component={ShareScreen} />
             <Tab.Screen name="Collection" component={CollectionScreen} />
-            <Tab.Screen name="MyProfile" component={ProfileScreen} options={{ tabBarLabel: 'Profile' }} />
+            <Tab.Screen name="MyProfile" component={ProfileScreen} />
         </Tab.Navigator>
     );
 }
+
 
 export default function AppNavigator() {
     const { isAuthenticated, isLoading } = useAuthStore();

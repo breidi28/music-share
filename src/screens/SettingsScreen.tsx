@@ -722,6 +722,22 @@ export default function SettingsScreen({ navigation }: any) {
                     />
                 </ListGroup>
 
+                {user?.is_admin && (
+                    <>
+                        <ListHeader title="Administration" />
+                        <ListGroup>
+                            <ListItem
+                                title="Admin Dashboard"
+                                icon="shield-checkmark-outline"
+                                iconColor={HIG.systemColors.systemPurple}
+                                onPress={() => WebBrowser.openBrowserAsync(`${api.defaults.baseURL?.replace('/api', '/admin')}/?token=${useAuthStore.getState().token}`)}
+                                chevron
+                            />
+                        </ListGroup>
+                        <ListFooter title="Manage users, posts, and monitor app statistics." />
+                    </>
+                )}
+
                 {/* Account Actions - Destructive */}
                 <ListHeader title="Account Actions" />
                 <ListGroup>

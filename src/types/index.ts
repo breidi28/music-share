@@ -9,6 +9,7 @@ export interface User {
   following_count: number;
   posts_count: number;
   created_at: string;
+  is_admin?: boolean;
   is_following?: boolean;
   has_spotify_linked?: boolean;
   has_youtube_linked?: boolean;

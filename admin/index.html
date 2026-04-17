@@ -321,6 +321,57 @@
 
         .hidden { display: none !important; }
 
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-backdrop-filter: blur(5px);
+            backdrop-filter: blur(5px);
+        }
+        .modal-box {
+            width: 100%;
+            max-width: 480px;
+            padding: 24px;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+        }
+        .modal-box h2 {
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--text-dim);
+            font-size: 14px;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: white;
+            outline: none;
+            font-family: inherit;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            border-color: var(--primary);
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 24px;
+        }
+
         @media (max-width: 980px) {
             body { flex-direction: column; overflow: auto; }
             .sidebar {
@@ -526,8 +577,44 @@
         </div>
     </div>
 
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2>Edit User</h2>
+            <form id="edit-user-form" onsubmit="submitEditUser(event)">
+                <input type="hidden" id="edit-user-id">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="edit-username" required>
+                </div>
+                <div class="form-group">
+                    <label>Display Name</label>
+                    <input type="text" id="edit-display-name">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="edit-email">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-danger" onclick="deleteUser()" style="margin-right: auto;">Delete User</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeEditUserModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         const API_BASE = window.location.origin + '/api';
+        
+        // Handle token from URL if opened from the app
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlToken = urlParams.get('token');
+        if (urlToken) {
+            localStorage.setItem('admin_token', urlToken);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+        
         let token = localStorage.getItem('admin_token');
         let allUsers = [];
         let allPosts = [];
@@ -732,6 +819,7 @@
                         <td>${escapeHtml(joinedAt)}</td>
                         <td>
                             <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-ghost" onclick="openEditUserModal(${Number(user.id)})">Edit</button>
                                 <button class="btn btn-danger" onclick="toggleBan(${Number(user.id)})">${user.is_banned ? 'Unban' : 'Ban'}</button>
                                 <button class="btn btn-primary" onclick="toggleAdmin(${Number(user.id)})">${user.is_admin ? 'Demote' : 'Promote'}</button>
                             </div>
@@ -813,6 +901,52 @@
                     </tr>
                 `;
             });
+        }
+
+        function openEditUserModal(userId) {
+            const user = allUsers.find(u => u.id === userId);
+            if (!user) return;
+            document.getElementById('edit-user-id').value = user.id;
+            document.getElementById('edit-username').value = user.username || '';
+            document.getElementById('edit-display-name').value = user.display_name || '';
+            document.getElementById('edit-email').value = user.email || '';
+            document.getElementById('edit-user-modal').classList.remove('hidden');
+        }
+
+        function closeEditUserModal() {
+            document.getElementById('edit-user-modal').classList.add('hidden');
+        }
+
+        async function submitEditUser(event) {
+            event.preventDefault();
+            const id = document.getElementById('edit-user-id').value;
+            const username = document.getElementById('edit-username').value;
+            const display_name = document.getElementById('edit-display-name').value;
+            const email = document.getElementById('edit-email').value;
+
+            try {
+                await apiFetch(`/admin/users/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ username, display_name, email })
+                });
+                closeEditUserModal();
+                await refreshData();
+            } catch (err) {
+                alert(err.message || 'Failed to update user');
+            }
+        }
+
+        async function deleteUser() {
+            const id = document.getElementById('edit-user-id').value;
+            if (!confirm('Are you absolutely sure you want to permanently delete this user and ALL their data? This cannot be undone.')) return;
+
+            try {
+                await apiFetch(`/admin/users/${id}`, { method: 'DELETE' });
+                closeEditUserModal();
+                await refreshData();
+            } catch (err) {
+                alert(err.message || 'Failed to delete user');
+            }
         }
 
         async function toggleBan(userId) {

@@ -4612,6 +4612,66 @@ def admin_toggle_admin(user_id):
         'is_admin': user.is_admin
     })
 
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@admin_required()
+def admin_edit_user(user_id):
+    """Edit user basic details."""
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+        
+    data = request.json
+    if 'username' in data:
+        check = User.query.filter(User.username == data['username'], User.id != user_id).first()
+        if check:
+            return jsonify({'error': 'Username already taken'}), 400
+        user.username = data['username']
+        
+    if 'email' in data:
+        check = User.query.filter(User.email == data['email'], User.id != user_id).first()
+        if check:
+            return jsonify({'error': 'Email already taken'}), 400
+        user.email = data['email']
+        
+    if 'display_name' in data:
+        user.display_name = data['display_name']
+    
+    if 'bio' in data:
+        user.bio = data['bio']
+
+    if 'password' in data and data['password'].strip():
+        user.set_password(data['password'].strip())
+
+    try:
+        db.session.commit()
+        return jsonify(user.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Failed to update user', 'details': str(e)}), 500
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required()
+def admin_delete_user(user_id):
+    """Permanently delete a user and their data."""
+    current_admin_id = int(get_jwt_identity())
+    if current_admin_id == user_id:
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    try:
+        # Simplified deletion utilizing cascades. 
+        # For full robust deletion, explicit mapping would be required.
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({'message': 'User deleted successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(str(e))
+        return jsonify({'error': 'Failed to delete user. Please ensure all relations cascade or unlink first.'}), 500
+
 
 def _admin_serialize_post(post: Post) -> dict:
     return {
