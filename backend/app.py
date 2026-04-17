@@ -1376,9 +1376,27 @@ def spotify_callback():
         db.session.commit()
 
         if request.method == 'GET':
-            # Redirect back to the mobile app
-            return redirect("musicshare://auth-success?service=spotify")
-        
+            # Support both Native Deep Link and Web Popup closing
+            html_response = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <script>
+                    window.location.replace("musicshare://auth-success?service=spotify");
+                    setTimeout(function() {
+                        if (window.opener) {
+                            window.close();
+                        }
+                    }, 500);
+                </script>
+            </head>
+            <body style="background:#000; color:#fff; display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif;">
+                <h2>Successfully connected to Spotify</h2>
+                <p>Returning you to the app...</p>
+            </body>
+            </html>
+            """
+            return html_response
         return jsonify({'message': 'Spotify linked successfully', 'user': user.to_dict(user_id)})
         
     except Exception as e:
@@ -1712,7 +1730,26 @@ def youtube_callback():
         db.session.commit()
 
         if request.method == 'GET':
-            return redirect("musicshare://auth-success?service=youtube")
+            html_response = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <script>
+                    window.location.replace("musicshare://auth-success?service=youtube");
+                    setTimeout(function() {
+                        if (window.opener) {
+                            window.close();
+                        }
+                    }, 500);
+                </script>
+            </head>
+            <body style="background:#000; color:#fff; display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif;">
+                <h2>Successfully connected to YouTube Music</h2>
+                <p>Returning you to the app...</p>
+            </body>
+            </html>
+            """
+            return html_response
 
         return jsonify({'message': 'YouTube Music linked successfully', 'user': user.to_dict(user_id)})
         

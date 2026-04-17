@@ -156,11 +156,15 @@ export default function SettingsScreen({ navigation }: any) {
 
             const authUrl = `https://accounts.spotify.com/authorize?client_id=${SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(SPOTIFY_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&state=${user.id}`;
 
-            const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
+            const returnUrl = Platform.OS === 'web' ? window.location.origin : 'musicshare://';
+            const result = await WebBrowser.openAuthSessionAsync(authUrl, returnUrl);
 
-            if (result.type === 'success') {
-                const res = await usersApi.getUser(user.id);
-                setProfile(res.data);
+            // Re-fetch profile to check if connection was successful
+            // (On web, the popup closing might resolve as 'dismiss' rather than 'success')
+            const res = await usersApi.getUser(user.id);
+            setProfile(res.data);
+            
+            if (res.data.has_spotify_linked) {
                 Toast.show({ type: 'success', text1: 'Spotify Connected!' });
             }
         } catch (error) {
@@ -193,11 +197,13 @@ export default function SettingsScreen({ navigation }: any) {
                 `&prompt=consent`,
             ].join('');
 
-            const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
+            const returnUrl = Platform.OS === 'web' ? window.location.origin : 'musicshare://';
+            const result = await WebBrowser.openAuthSessionAsync(authUrl, returnUrl);
 
-            if (result.type === 'success') {
-                const res = await usersApi.getUser(user.id);
-                setProfile(res.data);
+            const res = await usersApi.getUser(user.id);
+            setProfile(res.data);
+            
+            if (res.data.has_youtube_linked) {
                 Toast.show({ type: 'success', text1: 'YouTube Music Connected!' });
             }
         } catch (error) {
@@ -214,11 +220,13 @@ export default function SettingsScreen({ navigation }: any) {
             const perms = 'basic_access,email,offline_access,manage_library,listening_history';
             const authUrl = `https://connect.deezer.com/oauth/auth.php?app_id=${DEEZER_APP_ID}&redirect_uri=${encodeURIComponent(DEEZER_REDIRECT_URI)}&perms=${encodeURIComponent(perms)}&state=${user.id}`;
 
-            const result = await WebBrowser.openAuthSessionAsync(authUrl, 'musicshare://');
+            const returnUrl = Platform.OS === 'web' ? window.location.origin : 'musicshare://';
+            const result = await WebBrowser.openAuthSessionAsync(authUrl, returnUrl);
 
-            if (result.type === 'success') {
-                const res = await usersApi.getUser(user.id);
-                setProfile(res.data);
+            const res = await usersApi.getUser(user.id);
+            setProfile(res.data);
+            
+            if (res.data.has_deezer_linked) {
                 Toast.show({ type: 'success', text1: 'Deezer Connected!' });
             }
         } catch (error) {
