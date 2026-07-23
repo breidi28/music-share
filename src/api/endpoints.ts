@@ -1,4 +1,5 @@
-import client from './client';
+import axios from 'axios';
+import client, { API_BASE_URL } from './client';
 import {
     PaginatedPosts,
     User,
@@ -21,11 +22,16 @@ import {
 
 // Auth
 export const authApi = {
-    register: (data: { username: string; email: string; password: string; display_name: string; bio?: string; favorite_genres?: string }) =>
-        client.post('/auth/register', data),
-    login: (username: string, password: string) =>
-        client.post('/auth/login', { username, password }),
     getMe: () => client.get('/auth/me'),
+    // Uses a bare axios call (not the shared `client`) because client's request
+    // interceptor always injects the stored *app* token when present, which would
+    // clobber this Clerk token on subsequent (post-first-login) exchange calls.
+    clerkExchange: (clerkToken: string) =>
+        axios.post<{ token: string; user: User }>(
+            `${API_BASE_URL}/auth/clerk-exchange`,
+            undefined,
+            { headers: { Authorization: `Bearer ${clerkToken}` }, timeout: 20000 }
+        ),
 };
 
 // Users

@@ -48,7 +48,14 @@
     "plugins": [
       "expo-web-browser",
       "expo-camera",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-dev-client",
+      [
+        "@clerk/expo",
+        {
+          "theme": "./clerk-theme.json"
+        }
+      ]
     ],
     "extra": {
       "eas": {

@@ -7,8 +7,6 @@ export type RootStackParamList = {
     // Auth
     Login: undefined;
     Register: undefined;
-    ForgotPassword: undefined;
-    ResetPassword: { email: string };
 
     // Main tab container
     Main: undefined;

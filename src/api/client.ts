@@ -36,10 +36,26 @@ function resolveExpoHostIp(): string | null {
 
 function resolveApiBaseUrl(): string {
     const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-    if (envUrl) return envUrl;
+    
+    // If explicitly set to a specific URL, use it directly
+    if (envUrl && envUrl !== 'LOCAL') return envUrl;
 
-    // Default to the production Render backend for both local dev and production, 
-    // unless EXPO_PUBLIC_API_BASE_URL is explicitly set to LOCAL in the .env file.
+    // If explicitly set to 'LOCAL', construct the URL using the PC's local IP.
+    // This allows physical devices on the same Wi-Fi to connect to the local backend.
+    if (envUrl === 'LOCAL') {
+        const host = resolveExpoHostIp();
+        if (host) {
+            // Note: If using Expo Tunnel (ngrok), this host will be an ngrok URL.
+            // Connecting to port 5000 on the ngrok URL will fail since only port 8081 is tunneled.
+            if (host.includes('ngrok')) {
+                console.warn('[API] Warning: Using local API via Expo Tunnel. The backend port (5000) is not tunneled, so requests will likely fail.');
+            }
+            return `http://${host}:5000/api`;
+        }
+        return LOCAL_API_BASE_URL;
+    }
+
+    // Default to the production Render backend for both local dev and production
     return PROD_API_BASE_URL;
 }
 

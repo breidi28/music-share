@@ -23,7 +23,7 @@ import random
 import string
 from difflib import SequenceMatcher
 from email.message import EmailMessage
-import jwt
+import jwt as pyjwt
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -84,6 +84,44 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
+
+# ─── Clerk config (optional subsystem — misconfiguration should 503 the ────────
+# clerk-exchange route only, not crash the whole app like SECRET_KEY does) ──────
+CLERK_SECRET_KEY = os.getenv('CLERK_SECRET_KEY')
+CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL')
+_clerk_jwks_client = pyjwt.PyJWKClient(CLERK_JWKS_URL) if CLERK_JWKS_URL else None
+
+
+class ClerkVerificationError(Exception):
+    pass
+
+
+def _verify_clerk_token(token: str) -> dict:
+    if not _clerk_jwks_client:
+        raise ClerkVerificationError('Clerk is not configured on this server')
+    try:
+        signing_key = _clerk_jwks_client.get_signing_key_from_jwt(token)
+        return pyjwt.decode(
+            token,
+            signing_key.key,
+            algorithms=['RS256'],
+            options={'require': ['exp', 'iat', 'sub']},
+        )
+    except pyjwt.PyJWTError as e:
+        raise ClerkVerificationError(str(e))
+
+
+def _fetch_clerk_user(clerk_user_id: str) -> dict:
+    if not CLERK_SECRET_KEY:
+        raise ClerkVerificationError('Clerk is not configured on this server')
+    resp = requests.get(
+        f'https://api.clerk.com/v1/users/{clerk_user_id}',
+        headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
 
 def _error_payload(message: str, detail: str | None = None) -> dict:
     payload = {'error': message}
@@ -217,7 +255,17 @@ def _ensure_phase0_schema():
         statements.append('ALTER TABLE "user" ADD COLUMN is_admin BOOLEAN DEFAULT FALSE')
     if 'is_banned' not in user_cols:
         statements.append('ALTER TABLE "user" ADD COLUMN is_banned BOOLEAN DEFAULT FALSE')
-        
+    if 'clerk_user_id' not in user_cols:
+        statements.append('ALTER TABLE "user" ADD COLUMN clerk_user_id VARCHAR(64)')
+    # Nullable-safe unique index (multiple NULLs allowed) — works on SQLite and Postgres.
+    statements.append('CREATE UNIQUE INDEX IF NOT EXISTS ix_user_clerk_user_id ON "user" (clerk_user_id)')
+    # Clerk-authenticated users have no local password/email captured at signup time.
+    # SQLite can't drop a NOT NULL constraint without a full table rebuild, so this is
+    # Postgres-only; local SQLite dev DBs are disposable and can be recreated instead.
+    if db.engine.dialect.name == 'postgresql':
+        statements.append('ALTER TABLE "user" ALTER COLUMN password_hash DROP NOT NULL')
+        statements.append('ALTER TABLE "user" ALTER COLUMN email DROP NOT NULL')
+
     # Post additions
     if 'pinned_comment_id' not in post_cols:
         statements.append('ALTER TABLE post ADD COLUMN pinned_comment_id INTEGER')
@@ -348,8 +396,9 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     display_name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(256), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
+    password_hash = db.Column(db.String(256), nullable=True)
+    clerk_user_id = db.Column(db.String(64), unique=True, nullable=True)
     bio = db.Column(db.String(300), default='')
     avatar_url = db.Column(db.String(500), default='')
     favorite_genres = db.Column(db.String(500), default='')
@@ -1143,7 +1192,9 @@ def login():
         user = User.query.filter(
             (User.username == identifier) | (User.email == identifier)
         ).first()
-        if not user or not user.check_password(password):
+        # Clerk-only users have no password_hash — fail cleanly instead of
+        # raising inside check_password_hash(None, ...).
+        if not user or not user.password_hash or not user.check_password(password):
             return jsonify({'error': 'Invalid credentials'}), 401
 
         token = create_access_token(identity=str(user.id))
@@ -1161,6 +1212,78 @@ def get_me():
     user_id = int(get_jwt_identity())
     user = db.get_or_404(User, user_id)
     return jsonify(user.to_dict(current_user_id=user_id))
+
+
+@app.route('/api/auth/clerk-exchange', methods=['POST'])
+@limiter.limit('30 per hour; 10 per minute')
+def clerk_exchange():
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Missing Clerk session token'}), 401
+    clerk_token = auth_header[len('Bearer '):].strip()
+
+    try:
+        claims = _verify_clerk_token(clerk_token)
+    except ClerkVerificationError as e:
+        app.logger.warning(f'Clerk token verification failed: {str(e)}')
+        return jsonify({'error': 'Invalid session'}), 401
+
+    clerk_user_id = claims.get('sub')
+    if not clerk_user_id:
+        return jsonify({'error': 'Invalid session'}), 401
+
+    user = User.query.filter_by(clerk_user_id=clerk_user_id).first()
+
+    if not user:
+        try:
+            profile = _fetch_clerk_user(clerk_user_id)
+        except Exception as e:
+            app.logger.error(f'Failed to fetch Clerk user profile: {str(e)}')
+            return jsonify({'error': 'Could not reach Clerk, please try again'}), 502
+
+        email = None
+        email_addresses = profile.get('email_addresses') or []
+        primary_email_id = profile.get('primary_email_address_id')
+        primary = next((e for e in email_addresses if e.get('id') == primary_email_id), None)
+        candidate = (primary or (email_addresses[0] if email_addresses else {})).get('email_address')
+        if candidate:
+            candidate = sanitize_string(candidate.strip().lower(), MAX_EMAIL_LEN)
+            if validate_email(candidate):
+                email = candidate
+
+        username_base = profile.get('username') or (email.split('@')[0] if email else None) or f'user_{clerk_user_id[-8:]}'
+        username_base = sanitize_string(username_base.lower(), MAX_USERNAME_LEN) or f'user_{clerk_user_id[-8:]}'
+        username = username_base
+        suffix_attempt = 0
+        while User.query.filter(User.username.ilike(username)).first():
+            suffix_attempt += 1
+            username = f'{username_base}{random.randint(1000, 9999)}'
+            if suffix_attempt > 20:
+                return jsonify({'error': 'Could not allocate a username, please try again'}), 500
+
+        display_name = ' '.join(
+            part for part in [profile.get('first_name'), profile.get('last_name')] if part
+        ).strip() or username
+        display_name = sanitize_string(display_name, MAX_DISPLAY_NAME_LEN) or username
+
+        user = User(
+            username=username,
+            display_name=display_name,
+            email=email,
+            clerk_user_id=clerk_user_id,
+        )
+        db.session.add(user)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            # Race between two concurrent first-time exchanges for the same Clerk user.
+            user = User.query.filter_by(clerk_user_id=clerk_user_id).first()
+            if not user:
+                return jsonify({'error': 'Could not create account, please try again'}), 500
+
+    token = create_access_token(identity=str(user.id))
+    return jsonify({'token': token, 'user': user.to_dict(current_user_id=user.id)}), 200
 
 # ─── Spotify OAuth ─────────────────────────────────────────────────────────────
 

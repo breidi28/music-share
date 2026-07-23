@@ -5,10 +5,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast, { ToastConfig } from 'react-native-toast-message';
 import { View, Text } from 'react-native';
+import { ClerkProvider } from '@clerk/expo';
+import { tokenCache } from '@clerk/expo/token-cache';
 import { useAuthStore } from './src/store/authStore';
 import AppNavigator from './src/navigation/AppNavigator';
+import ClerkAuthBridge from './src/components/ClerkAuthBridge';
 
 import './global.css';
+
+const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+if (!CLERK_PUBLISHABLE_KEY) {
+  throw new Error('Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY — set it in .env.local, EAS build env vars, and Vercel.');
+}
 
 /* Fully custom toast — auto-height so long messages never get clipped */
 const AppToast = ({ text1, text2, color }: { text1?: string; text2?: string; color: string }) => (
@@ -55,15 +63,18 @@ export default function App() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={{ flex: 1, backgroundColor: 'black' }}>
-        <SafeAreaProvider>
-          <StatusBar style="light" />
-          <AppNavigator />
-          {/* Toast initialized here so it can overlay navigator */}
-          <Toast config={toastConfig} />
-        </SafeAreaProvider>
-      </View>
-    </GestureHandlerRootView>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY!} tokenCache={tokenCache}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: 'black' }}>
+          <SafeAreaProvider>
+            <StatusBar style="light" />
+            <ClerkAuthBridge />
+            <AppNavigator />
+            {/* Toast initialized here so it can overlay navigator */}
+            <Toast config={toastConfig} />
+          </SafeAreaProvider>
+        </View>
+      </GestureHandlerRootView>
+    </ClerkProvider>
   );
 }

@@ -8,8 +8,7 @@ interface AuthState {
     token: string | null;
     isLoading: boolean;
     isAuthenticated: boolean;
-    login: (username: string, password: string) => Promise<void>;
-    register: (data: { username: string; email: string; password: string; display_name: string; bio?: string; favorite_genres?: string }) => Promise<void>;
+    setSessionFromExchange: (token: string, user: User) => Promise<void>;
     logout: () => Promise<void>;
     loadStoredAuth: () => Promise<void>;
     updateUser: (user: User) => void;
@@ -36,16 +35,9 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
     },
 
-    login: async (username, password) => {
-        const response = await authApi.login(username, password);
-        const { token, user } = response.data;
-        await setAuthToken(token);
-        set({ user, token, isAuthenticated: true });
-    },
-
-    register: async (data) => {
-        const response = await authApi.register(data);
-        const { token, user } = response.data;
+    // Called by ClerkAuthBridge once Clerk reports a signed-in session and the
+    // backend has exchanged it for this app's own JWT.
+    setSessionFromExchange: async (token, user) => {
         await setAuthToken(token);
         set({ user, token, isAuthenticated: true });
     },

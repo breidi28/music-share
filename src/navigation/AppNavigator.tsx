@@ -16,8 +16,6 @@ import { Colors } from '../theme';
 
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
-import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
-import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import FeedScreen from '../screens/FeedScreen';
 import ExploreScreen from '../screens/ExploreScreen';
 import ShareScreen from '../screens/ShareScreen';
@@ -371,20 +369,6 @@ export default function AppNavigator() {
                         <Stack.Screen
                             name="Register"
                             component={RegisterScreen}
-                            options={{
-                                animation: 'slide_from_right',
-                            }}
-                        />
-                        <Stack.Screen
-                            name="ForgotPassword"
-                            component={ForgotPasswordScreen}
-                            options={{
-                                animation: 'slide_from_right',
-                            }}
-                        />
-                        <Stack.Screen
-                            name="ResetPassword"
-                            component={ResetPasswordScreen}
                             options={{
                                 animation: 'slide_from_right',
                             }}

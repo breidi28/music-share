@@ -16,6 +16,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
+import { useAuth } from '@clerk/expo';
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
 import { HIG } from '../theme/hig';
@@ -44,6 +45,7 @@ const DEEZER_REDIRECT_URI = 'https://music-share-b4r8.onrender.com/api/integrati
 export default function SettingsScreen({ navigation }: any) {
     const insets = useSafeAreaInsets();
     const { user, logout } = useAuthStore();
+    const { signOut } = useAuth();
 
     // Header styles that depend on insets
     const headerStyles = {
@@ -389,8 +391,14 @@ export default function SettingsScreen({ navigation }: any) {
     };
 
     const handleLogout = () => {
-        showConfirm('Logout', 'Are you sure you want to logout?', () => {
-            logout();
+        showConfirm('Logout', 'Are you sure you want to logout?', async () => {
+            // Sign out of Clerk first — otherwise ClerkAuthBridge sees isSignedIn still
+            // true right after authStore.logout() clears isAuthenticated, and immediately
+            // re-exchanges a new app session, undoing the logout.
+            try {
+                await signOut();
+            } catch { }
+            await logout();
         });
     };
 
