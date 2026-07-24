@@ -19,25 +19,47 @@ const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 // Web-only navigation handler for Clerk's <SignIn/>/<SignUp/> components.
 //
-// This app routes by STATE (ClerkAuthBridge flips authStore.isAuthenticated once
-// the backend token exchange succeeds), not by URL. So the ONLY Clerk navigation we
-// act on is the "Sign up"/"Sign in" cross-link between our two auth screens
-// (signUpUrl="/sign-up" / signInUrl="/sign-in"). Every other target Clerk asks to
-// navigate to — most importantly the post-sign-in redirect to "/" — must be a NO-OP:
-// doing a real browser navigation there reloads the SPA, and the freshly-reloaded,
-// already-signed-in <SignIn/> immediately re-fires the same redirect, producing the
-// blank-page + continuous-reload loop. State-based routing takes it from here.
-function clerkRouter(to: string) {
-  if (!navigationRef.isReady()) return;
-  // Match only the exact cross-link paths, not multi-step URLs that merely contain
-  // "sign-in" (e.g. "/sign-in#/factor-one"), which must not yank the user to Login.
-  const path = to.split('#')[0].split('?')[0].replace(/\/+$/, '');
-  if (path.endsWith('/sign-up')) {
-    navigationRef.navigate('Register');
-  } else if (path.endsWith('/sign-in')) {
-    navigationRef.navigate('Login');
+// Clerk drives its OWN multi-step flows (OAuth sso-callback, the "continue" step for
+// required fields like username, factor-one/two, reset-password) through this router,
+// so it must handle THREE cases correctly — getting any of them wrong breaks a flow:
+//
+//   1. The "Sign up"/"Sign in" CROSS-LINKS between our two auth screens -> react-navigation.
+//      Only when there's no in-flow step hash: "/sign-up" is a cross-link, but
+//      "/sign-up#/continue" is a step and must fall through to (3).
+//   2. The bare post-auth redirect to "/" -> NO-OP. App state (ClerkAuthBridge flipping
+//      authStore.isAuthenticated) drives this; a real navigation here reloads the SPA and
+//      the reloaded, already-signed-in <SignIn/> re-fires it -> blank-page reload loop.
+//   3. Everything else (sso-callback, continue, factor-one, ...) -> REAL navigation, so
+//      Clerk's flow proceeds. Critical for social sign-in, which routes through an
+//      sso-callback (and, for a new Google/Apple user, a username "continue" step).
+function clerkRouter(to: string, metadata?: { windowNavigate?: (to: string | URL) => void }) {
+  let pathname = to;
+  let hash = '';
+  try {
+    const u = new URL(to, window.location.origin);
+    pathname = u.pathname.replace(/\/+$/, '');
+    hash = u.hash;
+  } catch {
+    // Relative step path like "factor-one" — leave as-is; treated as a step below.
   }
-  // else: no-op — app state drives post-auth navigation.
+
+  if (!hash) {
+    if (pathname.endsWith('/sign-up')) {
+      if (navigationRef.isReady()) navigationRef.navigate('Register');
+      return;
+    }
+    if (pathname.endsWith('/sign-in')) {
+      if (navigationRef.isReady()) navigationRef.navigate('Login');
+      return;
+    }
+    if (pathname === '' || pathname === '/') {
+      return; // bare post-auth redirect — state-driven, no-op to avoid the reload loop
+    }
+  }
+
+  // A real Clerk in-flow step — let the flow continue.
+  if (metadata?.windowNavigate) metadata.windowNavigate(to);
+  else if (typeof window !== 'undefined') window.location.assign(to);
 }
 
 /* Fully custom toast — auto-height so long messages never get clipped */
