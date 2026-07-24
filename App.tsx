@@ -4,18 +4,35 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast, { ToastConfig } from 'react-native-toast-message';
-import { View, Text } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { ClerkProvider } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import { useAuthStore } from './src/store/authStore';
 import AppNavigator from './src/navigation/AppNavigator';
 import ClerkAuthBridge from './src/components/ClerkAuthBridge';
+import { navigationRef } from './src/navigation/navigationRef';
 
 import './global.css';
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
-if (!CLERK_PUBLISHABLE_KEY) {
-  throw new Error('Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY — set it in .env.local, EAS build env vars, and Vercel.');
+
+// Web-only: keeps Clerk's "Sign up"/"Sign in" cross-links (signUpUrl="/sign-up" on
+// LoginScreen.web.tsx, signInUrl="/sign-in" on RegisterScreen.web.tsx) inside our own
+// react-navigation stack instead of Clerk's default behavior of falling back to a full
+// browser redirect to its hosted Account Portal on a different domain. Anything else
+// (OAuth provider redirects, etc.) still goes through the real browser navigation.
+function clerkRouter(to: string, metadata?: { windowNavigate?: (to: string | URL) => void }) {
+  if (navigationRef.isReady()) {
+    if (to.includes('sign-up')) {
+      navigationRef.navigate('Register');
+      return;
+    }
+    if (to.includes('sign-in')) {
+      navigationRef.navigate('Login');
+      return;
+    }
+  }
+  metadata?.windowNavigate?.(to);
 }
 
 /* Fully custom toast — auto-height so long messages never get clipped */
@@ -55,6 +72,17 @@ const toastConfig: ToastConfig = {
   info:    (props: any) => <AppToast text1={props?.text1 ?? ''} text2={props?.text2 ?? ''} color="#0A84FF" />,
 };
 
+function ConfigErrorScreen({ message }: { message: string }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+      <Text style={{ color: '#FF3B30', fontSize: 18, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
+        Configuration error
+      </Text>
+      <Text style={{ color: '#8E8E93', fontSize: 14, textAlign: 'center' }}>{message}</Text>
+    </View>
+  );
+}
+
 export default function App() {
   const loadStoredAuth = useAuthStore(s => s.loadStoredAuth);
 
@@ -62,8 +90,20 @@ export default function App() {
     loadStoredAuth();
   }, []);
 
+  // Rendered instead of crashing the whole bundle so a missing env var shows a
+  // readable message rather than a silent white screen.
+  if (!CLERK_PUBLISHABLE_KEY) {
+    return (
+      <ConfigErrorScreen message="Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Set it in this environment's build config (.env.local locally, EAS build env vars, or the Vercel project's environment variables) and redeploy." />
+    );
+  }
+
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY!} tokenCache={tokenCache}>
+    <ClerkProvider
+      publishableKey={CLERK_PUBLISHABLE_KEY}
+      tokenCache={tokenCache}
+      {...(Platform.OS === 'web' ? { routerPush: clerkRouter, routerReplace: clerkRouter } : {})}
+    >
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: 'black' }}>
           <SafeAreaProvider>
