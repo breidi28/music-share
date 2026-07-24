@@ -231,10 +231,29 @@ def _ensure_phase0_schema():
     Uses SQLAlchemy inspector to be database-agnostic (works on SQLite and Postgres).
     """
     from sqlalchemy import text, inspect
-    
-    # 1. Ensure all tables exist first
-    db.create_all()
-    
+    import time as _t
+
+    # 1. Ensure all tables exist first.
+    #    Retry to tolerate a cold-start database: managed Postgres (e.g. Neon free tier)
+    #    auto-suspends when idle, and the very first connection at deploy time can time
+    #    out while it wakes. Without a retry, that one failure would leave the app running
+    #    with NO tables (every query then fails with 'relation "user" does not exist'),
+    #    because this is the only place tables get created.
+    _create_err = None
+    for _attempt in range(1, 6):
+        try:
+            db.create_all()
+            _create_err = None
+            break
+        except Exception as e:
+            _create_err = e
+            app.logger.warning(f'create_all attempt {_attempt}/5 failed (DB may be waking up): {e}')
+            _t.sleep(min(3 * _attempt, 15))
+    if _create_err is not None:
+        app.logger.error(f'CRITICAL: could not create tables after retries — the app will 500 on '
+                         f'every DB query until this is resolved. Last error: {_create_err}')
+        return
+
     # 2. Check and add missing columns manually for older DBs
     inspector = inspect(db.engine)
     
