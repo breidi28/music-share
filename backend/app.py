@@ -274,15 +274,32 @@ def _ensure_phase0_schema():
     if 'parent_id' not in comment_cols:
         statements.append('ALTER TABLE comment ADD COLUMN parent_id INTEGER')
         
-    if statements:
-        with db.engine.connect() as conn:
-            for stmt in statements:
-                try:
-                    conn.execute(text(stmt))
-                    app.logger.info(f"Applied migration: {stmt}")
-                except Exception as e:
-                    app.logger.warning(f"Migration statement failed: {stmt} - Error: {str(e)}")
-            conn.commit()
+    # IMPORTANT: run each DDL statement in its OWN transaction. On Postgres, the first
+    # failing statement aborts the whole transaction ("current transaction is aborted,
+    # commands ignored until end of transaction block"), which would silently skip every
+    # later statement — including ADD COLUMN clerk_user_id — if any earlier one errored
+    # (e.g. a column that already exists). db.engine.begin() commits on success and rolls
+    # back only that one statement on failure, so the rest still apply. (SQLite doesn't
+    # have this abort-cascade, which is why it never surfaced in local dev.)
+    for stmt in statements:
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(text(stmt))
+            app.logger.info(f"Applied migration: {stmt}")
+        except Exception as e:
+            app.logger.warning(f"Migration statement failed (continuing): {stmt} - Error: {str(e)}")
+
+    # Log the resulting user-table columns so the deploy logs make it obvious whether the
+    # critical clerk_user_id column actually landed (its absence is what 500s login and
+    # clerk-exchange). Uses a fresh inspector so it reflects post-migration state.
+    try:
+        final_user_cols = {c['name'] for c in inspect(db.engine).get_columns('user')}
+        app.logger.info(f"user table columns after migration: {sorted(final_user_cols)}")
+        if 'clerk_user_id' not in final_user_cols:
+            app.logger.error("CRITICAL: 'clerk_user_id' column is MISSING after migration — "
+                             "login and clerk-exchange will 500 until it is added.")
+    except Exception as e:
+        app.logger.warning(f"Could not inspect user columns after migration: {str(e)}")
 
     # Optional bootstrap flow for first admin account (disabled by default).
     try:
@@ -1232,58 +1249,69 @@ def clerk_exchange():
     if not clerk_user_id:
         return jsonify({'error': 'Invalid session'}), 401
 
-    user = User.query.filter_by(clerk_user_id=clerk_user_id).first()
+    # Wrap the DB/profile work so any unexpected error is logged with a traceback
+    # (matching the login() route) and returns a clean message instead of the raw
+    # global 500 handler — critical for diagnosing prod-only issues like a schema
+    # column that failed to migrate.
+    try:
+        user = User.query.filter_by(clerk_user_id=clerk_user_id).first()
 
-    if not user:
-        try:
-            profile = _fetch_clerk_user(clerk_user_id)
-        except Exception as e:
-            app.logger.error(f'Failed to fetch Clerk user profile: {str(e)}')
-            return jsonify({'error': 'Could not reach Clerk, please try again'}), 502
+        if not user:
+            try:
+                profile = _fetch_clerk_user(clerk_user_id)
+            except Exception as e:
+                app.logger.error(f'Failed to fetch Clerk user profile: {str(e)}')
+                return jsonify({'error': 'Could not reach Clerk, please try again'}), 502
 
-        email = None
-        email_addresses = profile.get('email_addresses') or []
-        primary_email_id = profile.get('primary_email_address_id')
-        primary = next((e for e in email_addresses if e.get('id') == primary_email_id), None)
-        candidate = (primary or (email_addresses[0] if email_addresses else {})).get('email_address')
-        if candidate:
-            candidate = sanitize_string(candidate.strip().lower(), MAX_EMAIL_LEN)
-            if validate_email(candidate):
-                email = candidate
+            email = None
+            email_addresses = profile.get('email_addresses') or []
+            primary_email_id = profile.get('primary_email_address_id')
+            primary = next((e for e in email_addresses if e.get('id') == primary_email_id), None)
+            candidate = (primary or (email_addresses[0] if email_addresses else {})).get('email_address')
+            if candidate:
+                candidate = sanitize_string(candidate.strip().lower(), MAX_EMAIL_LEN)
+                if validate_email(candidate):
+                    email = candidate
 
-        username_base = profile.get('username') or (email.split('@')[0] if email else None) or f'user_{clerk_user_id[-8:]}'
-        username_base = sanitize_string(username_base.lower(), MAX_USERNAME_LEN) or f'user_{clerk_user_id[-8:]}'
-        username = username_base
-        suffix_attempt = 0
-        while User.query.filter(User.username.ilike(username)).first():
-            suffix_attempt += 1
-            username = f'{username_base}{random.randint(1000, 9999)}'
-            if suffix_attempt > 20:
-                return jsonify({'error': 'Could not allocate a username, please try again'}), 500
+            username_base = profile.get('username') or (email.split('@')[0] if email else None) or f'user_{clerk_user_id[-8:]}'
+            username_base = sanitize_string(username_base.lower(), MAX_USERNAME_LEN) or f'user_{clerk_user_id[-8:]}'
+            username = username_base
+            suffix_attempt = 0
+            while User.query.filter(User.username.ilike(username)).first():
+                suffix_attempt += 1
+                username = f'{username_base}{random.randint(1000, 9999)}'
+                if suffix_attempt > 20:
+                    return jsonify({'error': 'Could not allocate a username, please try again'}), 500
 
-        display_name = ' '.join(
-            part for part in [profile.get('first_name'), profile.get('last_name')] if part
-        ).strip() or username
-        display_name = sanitize_string(display_name, MAX_DISPLAY_NAME_LEN) or username
+            display_name = ' '.join(
+                part for part in [profile.get('first_name'), profile.get('last_name')] if part
+            ).strip() or username
+            display_name = sanitize_string(display_name, MAX_DISPLAY_NAME_LEN) or username
 
-        user = User(
-            username=username,
-            display_name=display_name,
-            email=email,
-            clerk_user_id=clerk_user_id,
-        )
-        db.session.add(user)
-        try:
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
-            # Race between two concurrent first-time exchanges for the same Clerk user.
-            user = User.query.filter_by(clerk_user_id=clerk_user_id).first()
-            if not user:
-                return jsonify({'error': 'Could not create account, please try again'}), 500
+            user = User(
+                username=username,
+                display_name=display_name,
+                email=email,
+                clerk_user_id=clerk_user_id,
+            )
+            db.session.add(user)
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                # Race between two concurrent first-time exchanges for the same Clerk user.
+                user = User.query.filter_by(clerk_user_id=clerk_user_id).first()
+                if not user:
+                    return jsonify({'error': 'Could not create account, please try again'}), 500
 
-    token = create_access_token(identity=str(user.id))
-    return jsonify({'token': token, 'user': user.to_dict(current_user_id=user.id)}), 200
+        token = create_access_token(identity=str(user.id))
+        return jsonify({'token': token, 'user': user.to_dict(current_user_id=user.id)}), 200
+
+    except Exception as e:
+        import traceback
+        app.logger.error(f'Clerk exchange error: {str(e)}\n{traceback.format_exc()}')
+        db.session.rollback()
+        return jsonify(_error_payload('Clerk exchange failed', str(e))), 500
 
 # ─── Spotify OAuth ─────────────────────────────────────────────────────────────
 

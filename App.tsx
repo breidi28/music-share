@@ -4,35 +4,40 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast, { ToastConfig } from 'react-native-toast-message';
-import { View, Text, Platform } from 'react-native';
-import { ClerkProvider } from '@clerk/expo';
+import { View, Text, Platform, ActivityIndicator } from 'react-native';
+import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import { useAuthStore } from './src/store/authStore';
 import AppNavigator from './src/navigation/AppNavigator';
 import ClerkAuthBridge from './src/components/ClerkAuthBridge';
 import { navigationRef } from './src/navigation/navigationRef';
+import { Colors } from './src/theme';
 
 import './global.css';
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-// Web-only: keeps Clerk's "Sign up"/"Sign in" cross-links (signUpUrl="/sign-up" on
-// LoginScreen.web.tsx, signInUrl="/sign-in" on RegisterScreen.web.tsx) inside our own
-// react-navigation stack instead of Clerk's default behavior of falling back to a full
-// browser redirect to its hosted Account Portal on a different domain. Anything else
-// (OAuth provider redirects, etc.) still goes through the real browser navigation.
-function clerkRouter(to: string, metadata?: { windowNavigate?: (to: string | URL) => void }) {
-  if (navigationRef.isReady()) {
-    if (to.includes('sign-up')) {
-      navigationRef.navigate('Register');
-      return;
-    }
-    if (to.includes('sign-in')) {
-      navigationRef.navigate('Login');
-      return;
-    }
+// Web-only navigation handler for Clerk's <SignIn/>/<SignUp/> components.
+//
+// This app routes by STATE (ClerkAuthBridge flips authStore.isAuthenticated once
+// the backend token exchange succeeds), not by URL. So the ONLY Clerk navigation we
+// act on is the "Sign up"/"Sign in" cross-link between our two auth screens
+// (signUpUrl="/sign-up" / signInUrl="/sign-in"). Every other target Clerk asks to
+// navigate to — most importantly the post-sign-in redirect to "/" — must be a NO-OP:
+// doing a real browser navigation there reloads the SPA, and the freshly-reloaded,
+// already-signed-in <SignIn/> immediately re-fires the same redirect, producing the
+// blank-page + continuous-reload loop. State-based routing takes it from here.
+function clerkRouter(to: string) {
+  if (!navigationRef.isReady()) return;
+  // Match only the exact cross-link paths, not multi-step URLs that merely contain
+  // "sign-in" (e.g. "/sign-in#/factor-one"), which must not yank the user to Login.
+  const path = to.split('#')[0].split('?')[0].replace(/\/+$/, '');
+  if (path.endsWith('/sign-up')) {
+    navigationRef.navigate('Register');
+  } else if (path.endsWith('/sign-in')) {
+    navigationRef.navigate('Login');
   }
-  metadata?.windowNavigate?.(to);
+  // else: no-op — app state drives post-auth navigation.
 }
 
 /* Fully custom toast — auto-height so long messages never get clipped */
@@ -83,6 +88,45 @@ function ConfigErrorScreen({ message }: { message: string }) {
   );
 }
 
+function LoadingScreen({ label }: { label?: string }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" color={Colors.primary} />
+      {!!label && <Text style={{ color: '#8E8E93', fontSize: 14, marginTop: 16 }}>{label}</Text>}
+    </View>
+  );
+}
+
+// Rendered inside ClerkProvider so it can read Clerk's session state.
+function AppInner() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
+  const isLoading = useAuthStore(s => s.isLoading);
+
+  // ClerkAuthBridge must stay mounted across all states so the token exchange
+  // runs regardless of which gate branch is showing.
+  const bridge = <ClerkAuthBridge />;
+
+  let content: React.ReactNode;
+  if (!isLoaded || isLoading) {
+    // Clerk still initializing, or we're still restoring a stored app session.
+    content = <LoadingScreen />;
+  } else if (isSignedIn && !isAuthenticated) {
+    // Signed into Clerk but the backend exchange hasn't produced an app session
+    // yet. Show a spinner instead of the (blank, already-signed-in) SignIn screen.
+    content = <LoadingScreen label="Signing you in…" />;
+  } else {
+    content = <AppNavigator />;
+  }
+
+  return (
+    <>
+      {bridge}
+      {content}
+    </>
+  );
+}
+
 export default function App() {
   const loadStoredAuth = useAuthStore(s => s.loadStoredAuth);
 
@@ -108,8 +152,7 @@ export default function App() {
         <View style={{ flex: 1, backgroundColor: 'black' }}>
           <SafeAreaProvider>
             <StatusBar style="light" />
-            <ClerkAuthBridge />
-            <AppNavigator />
+            <AppInner />
             {/* Toast initialized here so it can overlay navigator */}
             <Toast config={toastConfig} />
           </SafeAreaProvider>
