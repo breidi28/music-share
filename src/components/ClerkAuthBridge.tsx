@@ -26,6 +26,17 @@ export default function ClerkAuthBridge() {
     const failures = useRef(0);
     const [retryTick, setRetryTick] = useState(0);
 
+    // Clerk's getToken/signOut can change identity on re-render. Reading them via refs
+    // (updated every render, but NOT effect dependencies) means the retry effect below
+    // only reruns when auth state actually changes, not on every unrelated re-render —
+    // which matters because a re-render firing mid-retry previously left inFlight stuck
+    // `true` forever (stale setTimeout closure bailing out without resetting it),
+    // wedging the bridge on the "signing in" spinner with no further retries or errors.
+    const getTokenRef = useRef(getToken);
+    getTokenRef.current = getToken;
+    const signOutRef = useRef(signOut);
+    signOutRef.current = signOut;
+
     // Reset the failure counter whenever Clerk transitions to signed-out.
     useEffect(() => {
         if (!isSignedIn) failures.current = 0;
@@ -35,11 +46,10 @@ export default function ClerkAuthBridge() {
         if (!isLoaded || !isSignedIn || isAuthenticated || inFlight.current) return;
 
         inFlight.current = true;
-        let cancelled = false;
 
         (async () => {
             try {
-                const clerkToken = await getToken();
+                const clerkToken = await getTokenRef.current();
                 if (!clerkToken) throw new Error('No Clerk session token available');
                 const { data } = await authApi.clerkExchange(clerkToken);
                 await setSessionFromExchange(data.token, data.user);
@@ -58,25 +68,20 @@ export default function ClerkAuthBridge() {
                     });
                     // Break out of the signed-in-but-unauthenticated limbo so the user
                     // gets a usable login screen back rather than a stuck spinner.
-                    await signOut().catch(() => {});
                     inFlight.current = false;
+                    await signOutRef.current().catch(() => {});
                     return;
                 }
 
                 // Transient (network blip / backend cold start) — back off and retry.
                 const delay = 1500 * failures.current;
                 setTimeout(() => {
-                    if (cancelled) return;
                     inFlight.current = false;
                     setRetryTick(t => t + 1);
                 }, delay);
             }
         })();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [isLoaded, isSignedIn, isAuthenticated, retryTick, getToken, setSessionFromExchange, signOut]);
+    }, [isLoaded, isSignedIn, isAuthenticated, retryTick, setSessionFromExchange]);
 
     return null;
 }
