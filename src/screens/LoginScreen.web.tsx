@@ -6,7 +6,7 @@ import { clerkWebAppearance } from '../theme/clerkWebAppearance';
 export default function LoginScreen() {
     return (
         <View style={{ flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-            <SignIn appearance={clerkWebAppearance} />
+            <SignIn appearance={clerkWebAppearance} signUpUrl="/sign-up" />
         </View>
     );
 }

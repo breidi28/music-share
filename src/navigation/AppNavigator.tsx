@@ -13,6 +13,7 @@ enableScreens();
 
 import { useAuthStore } from '../store/authStore';
 import { Colors } from '../theme';
+import { navigationRef } from './navigationRef';
 
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -192,6 +193,7 @@ export default function AppNavigator() {
 
     return (
         <NavigationContainer
+            ref={navigationRef}
             theme={{
                 dark: true,
                 colors: {
